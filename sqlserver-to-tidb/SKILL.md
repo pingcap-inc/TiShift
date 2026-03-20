@@ -169,7 +169,7 @@ Calculate a readiness score from 0-100 using 5 weighted categories. Read `refere
 | Category | Max | What It Measures |
 |---|---|---|
 | Schema Compatibility | 25 | Unsupported types (spatial, hierarchyid, xml, sql_variant), temporal tables, memory-optimized, computed columns, non-dbo schemas |
-| Code Portability | 25 | Stored procedure complexity (line count + features), triggers, CLR assemblies, Agent jobs, SSIS |
+| Procedural Code | 25 | Stored procedure complexity (line count + features), triggers, CLR assemblies, Agent jobs, SSIS |
 | Query Compatibility | 20 | T-SQL patterns in definitions (MERGE, FOR XML, cursors, dynamic SQL). Default 16/20 if no definitions available |
 | Data Complexity | 20 | Total data volume, largest table size, table count, collation diversity |
 | Operational Readiness | 10 | CDC enabled, authentication mode |

@@ -1,4 +1,4 @@
-"""CLI report formatter using Rich tables and panels."""
+"""CLI report formatter — matches the partner brief scan output format."""
 
 from __future__ import annotations
 
@@ -7,16 +7,15 @@ from collections import Counter
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from rich.text import Text
 
 from tishift_mssql.models import ScanReport, Severity
 
 
-_RATING_EMOJI = {
-    "excellent": "[green]Excellent[/green]",
-    "good": "[yellow]Good[/yellow]",
-    "moderate": "[dark_orange]Moderate[/dark_orange]",
-    "challenging": "[red]Challenging[/red]",
+_RATING_LABEL = {
+    "excellent": "[bold green]Excellent[/bold green]",
+    "good": "[bold yellow]Good[/bold yellow]",
+    "moderate": "[bold dark_orange]Moderate[/bold dark_orange]",
+    "challenging": "[bold red]Challenging[/bold red]",
     "difficult": "[bold red]Difficult[/bold red]",
 }
 
@@ -33,45 +32,99 @@ def _score_color(score: int, max_score: int) -> str:
 
 
 def render_cli_report(report: ScanReport, console: Console) -> None:
-    """Render the full scan report matching the spec CLI output format."""
+    """Render the scan report in the compact partner-brief format."""
+    scoring = report.scoring
+    inv = report.schema_inventory
+    auto = report.automation
 
-    # -- Header panel --
+    # -- Build the scoring summary panel --
+    lines: list[str] = []
+
+    # Header
     meta = report.sqlserver_metadata
-    version_line = meta.product_version or "unknown"
-    edition_line = meta.edition or "unknown"
-    header_text = (
-        f"Source: {report.source_host}\n"
-        f"SQL Server {edition_line} ({version_line})\n"
-        f"Database: {report.database}  |  "
-        f"Tables: {len(report.schema_inventory.tables)}  |  "
+    lines.append(f"  Source: {report.source_host}")
+    lines.append(
+        f"  SQL Server {meta.edition or 'unknown'} ({meta.product_version or 'unknown'})"
+    )
+    lines.append(
+        f"  Database: {report.database}  |  "
+        f"Tables: {len(inv.tables)}  |  "
         f"Total Size: {report.data_profile.total_data_mb / 1024:.1f} GB"
     )
+    lines.append("")
+
+    # Category scores table
+    lines.append(f"  {'Category':<24} {'Score':>5}  {'Max':>3}")
+    for cat in [
+        scoring.schema_compatibility,
+        scoring.data_complexity,
+        scoring.query_compatibility,
+        scoring.code_portability,
+        scoring.operational_readiness,
+    ]:
+        if cat is None:
+            continue
+        # Use short name for Operational Readiness
+        name = "Operational" if "Operational" in cat.name else cat.name
+        lines.append(f"  {name:<24} {cat.score:>5}  {cat.max_score:>3}")
+
+    lines.append("")
+    rating_label = _RATING_LABEL.get(scoring.rating.value, scoring.rating.value)
+    lines.append(f"  Overall Score    {scoring.overall_score}/100")
+    lines.append(f"  Rating           {rating_label}")
+    total_auto = auto.fully_automated_pct + auto.ai_assisted_pct
+    lines.append(f"  Automation %     {total_auto:.1f}%")
+
+    # Findings
+    lines.append("")
+    lines.append("  Findings")
+    lines.append(f"  - Blockers: {len(report.assessment.blockers)}")
+    if report.assessment.blockers:
+        blocker_types = sorted({i.type for i in report.assessment.blockers})
+        for bt in blocker_types:
+            lines.append(f"    - {bt}")
+
+    warning_types = sorted({i.type for i in report.assessment.warnings})
+    lines.append(f"  - Warnings: {len(report.assessment.warnings)}")
+    for wt in warning_types:
+        lines.append(f"    - {wt}")
+
+    # Scanned Objects — compact grid
+    lines.append("")
+    lines.append("  Scanned Objects")
+    sp_count = sum(1 for r in inv.routines if "PROCEDURE" in r.routine_type.upper())
+    fn_count = sum(1 for r in inv.routines if "FUNCTION" in r.routine_type.upper())
+    lines.append(
+        f"  Tables {len(inv.tables):>3}  Columns {len(inv.columns):>3}  "
+        f"Indexes {len(inv.indexes):>3}"
+    )
+    lines.append(
+        f"  Routines {sp_count + fn_count:>1}  Triggers {len(inv.triggers):>1}  "
+        f"Views {len(inv.views):>1}"
+    )
+
     console.print(
         Panel(
-            header_text,
-            title="[bold]TiShift-SQLServer — Migration Readiness Report[/bold]",
+            "\n".join(lines),
+            title="[bold]SCAN SCORING SUMMARY[/bold]",
             border_style="bright_blue",
+            expand=False,
+            padding=(1, 2),
         )
     )
 
-    # -- Overall score --
-    rating_label = _RATING_EMOJI.get(report.scoring.rating.value, report.scoring.rating.value)
-    console.print(
-        f"\n  [bold]Overall Score[/bold]  {report.scoring.overall_score}/100  {rating_label}\n"
-    )
-
-    # -- Category scores --
+    # -- Score Breakdown with deductions --
     scores_table = Table(title="Score Breakdown", show_lines=False, pad_edge=True)
     scores_table.add_column("Category", min_width=24)
     scores_table.add_column("Score", justify="right", min_width=8)
     scores_table.add_column("Deductions", ratio=1)
 
     for cat in [
-        report.scoring.schema_compatibility,
-        report.scoring.code_portability,
-        report.scoring.query_compatibility,
-        report.scoring.data_complexity,
-        report.scoring.operational_readiness,
+        scoring.schema_compatibility,
+        scoring.code_portability,
+        scoring.query_compatibility,
+        scoring.data_complexity,
+        scoring.operational_readiness,
     ]:
         if cat is None:
             continue
@@ -101,14 +154,13 @@ def render_cli_report(report: ScanReport, console: Console) -> None:
             feat_table.add_row(name.replace("_", " ").title(), str(count))
         console.print(feat_table)
 
-    # Inventory highlights
-    inv = report.schema_inventory
+    # -- Detailed Inventory --
     console.print("\n[bold]Inventory[/bold]")
     inv_table = Table(show_header=False, show_lines=False, pad_edge=True)
     inv_table.add_column("Metric", min_width=28)
     inv_table.add_column("Value", justify="right")
-    inv_table.add_row("Stored Procedures", str(sum(1 for r in inv.routines if "PROCEDURE" in r.routine_type.upper())))
-    inv_table.add_row("Functions", str(sum(1 for r in inv.routines if "FUNCTION" in r.routine_type.upper())))
+    inv_table.add_row("Stored Procedures", str(sp_count))
+    inv_table.add_row("Functions", str(fn_count))
     inv_table.add_row("Triggers", str(len(inv.triggers)))
     inv_table.add_row("CLR Assemblies", str(len(inv.assemblies)))
     inv_table.add_row("SQL Agent Jobs", str(len(inv.agent_jobs)))
@@ -117,7 +169,7 @@ def render_cli_report(report: ScanReport, console: Console) -> None:
     inv_table.add_row("Schemas in Use", ", ".join(inv.schemas) if inv.schemas else "dbo")
     console.print(inv_table)
 
-    # -- Issues --
+    # -- Issues Detail --
     console.print("\n[bold]Issues Found[/bold]")
     if report.assessment.blockers:
         console.print(f"  [bold red]BLOCKERS: {len(report.assessment.blockers)}[/bold red]")
@@ -135,15 +187,14 @@ def render_cli_report(report: ScanReport, console: Console) -> None:
         if len(report.assessment.warnings) > 10:
             console.print(f"    ... and {len(report.assessment.warnings) - 10} more")
 
-    # -- Automation estimates --
-    auto = report.automation
-    console.print("\n[bold]Automation Estimates[/bold]")
+    # -- Automation Coverage --
+    console.print("\n[bold]Automation Coverage[/bold]")
     est_table = Table(show_header=False, show_lines=False, pad_edge=True)
     est_table.add_column("Level", min_width=28)
     est_table.add_column("Pct", justify="right")
-    est_table.add_row("Fully Automated", f"{auto.fully_automated_pct:.0f}%")
-    est_table.add_row("AI-Assisted (needs review)", f"{auto.ai_assisted_pct:.0f}%")
-    est_table.add_row("Manual Required", f"{auto.manual_required_pct:.0f}%")
+    est_table.add_row("[green]Automated[/green]", f"{auto.fully_automated_pct:.0f}%")
+    est_table.add_row("[yellow]AI-Assisted (needs review)[/yellow]", f"{auto.ai_assisted_pct:.0f}%")
+    est_table.add_row("[red]Manual Required[/red]", f"{auto.manual_required_pct:.0f}%")
     console.print(est_table)
 
     # -- Cost estimate (optional) --
@@ -154,4 +205,8 @@ def render_cli_report(report: ScanReport, console: Console) -> None:
         for assumption in cost.assumptions:
             console.print(f"    • {assumption}")
 
+    # -- TiDB Cloud CTA --
+    console.print("")
+    console.print("  [bold]Start free → https://tidbcloud.com/free-trial[/bold]")
+    console.print("  Free Starter tier — no credit card required")
     console.print()

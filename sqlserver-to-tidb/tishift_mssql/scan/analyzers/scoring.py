@@ -244,7 +244,7 @@ def compute_scores(
             deductions=schema_deductions,
         ),
         code_portability=CategoryScore(
-            name="Code Portability",
+            name="Procedural Code",
             score=_bounded(25, code_penalty),
             max_score=25,
             deductions=code_deductions,

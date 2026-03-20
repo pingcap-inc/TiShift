@@ -26,7 +26,7 @@ schema_score -= MIN(non_dbo_schema_count * 3, 3)
 schema_score = MAX(schema_score, 0)
 ```
 
-## Category 2: Code Portability (25 points max)
+## Category 2: Procedural Code (25 points max)
 
 Start at 25, deduct for procedural code that must be rewritten.
 
