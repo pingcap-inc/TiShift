@@ -24,6 +24,10 @@ credentials/
 *.log
 logs/
 
+# Internal documents
+*.docx
+*.pptx
+
 # Build artifacts
 *.class
 target/
