@@ -1,0 +1,21 @@
+source:
+  host: localhost
+  port: 1433
+  user: sa
+  password: ""
+  database: myapp
+  auth: sql
+  encrypt: true
+  trust_server_certificate: true
+
+target:
+  host: 127.0.0.1
+  port: 4000
+  user: root
+  password: ""
+  database: myapp
+  tls: false
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
