@@ -34,7 +34,7 @@ TiShift ships as a set of AI coding assistant skills that guide you interactivel
 
 ### Prerequisites
 
-- An AI coding assistant that supports skills / slash commands (e.g. Claude Code, Cursor, Windsurf)
+- An AI coding assistant that supports skills / slash commands
 - Network access to your source database (SQL Server or Aurora MySQL)
 - A TiDB Cloud cluster (a free [Starter](https://tidbcloud.com/) tier works)
 
