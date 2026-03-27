@@ -28,6 +28,40 @@ TiShift follows a phased migration workflow:
 4. **Load** — Transfer data using the optimal strategy for your tier (ticloud import, direct load, DMS, or Lightning)
 5. **Validate** — Compare row counts, column structures, and data integrity between source and target
 
+## Getting Started
+
+TiShift ships as a set of AI coding assistant skills that guide you interactively through every migration phase. Each skill connects to your source and target databases, runs the scan, scores readiness, converts schemas, loads data, and validates results — step by step.
+
+### Prerequisites
+
+- An AI coding assistant that supports skills / slash commands (e.g. Claude Code, Cursor, Windsurf)
+- Network access to your source database (SQL Server or Aurora MySQL)
+- A TiDB Cloud cluster (a free [Starter](https://tidbcloud.com/) tier works)
+
+### 1. Clone and open the project
+
+```bash
+git clone https://github.com/pingcap-inc/TiShift.git
+cd TiShift
+# Open the project in your AI coding assistant
+```
+
+### 2. Run the skill for your source database
+
+#### Aurora MySQL to TiDB Cloud
+
+```
+/aurora-to-tidb
+```
+
+#### SQL Server to TiDB Cloud
+
+```
+/sqlserver-to-tidb
+```
+
+The skill will walk you through each phase — connecting to your databases, scanning the source schema, assessing compatibility, converting DDL, loading data, and validating the result. Follow the prompts; no additional setup is required.
+
 ## TiDB Cloud Tier Awareness
 
 TiShift is Cloud-first and defaults to **TiDB Cloud Starter** (free tier). It automatically adjusts recommendations based on your target tier:
@@ -39,7 +73,9 @@ TiShift is Cloud-first and defaults to **TiDB Cloud Starter** (free tier). It au
 | Storage | 25 GiB free | Auto-scaled | Configurable |
 | Cost | Free to start | ~$20/day | From $1,376/mo |
 
-## Quick Start
+## Optional: CLI Toolkit
+
+For environments where AI-assisted migration is not available, TiShift also provides deterministic Python CLI scripts that cover the same workflow.
 
 ### SQL Server to TiDB Cloud
 
@@ -82,34 +118,9 @@ python -m tishift.cli load --config tishift.yaml --scan-report ./tishift-reports
 python -m tishift.cli check --config tishift.yaml --schema mydb
 ```
 
-## Project Structure
+### Configuration
 
-```
-TiShift/
-├── sqlserver-to-tidb/          SQL Server → TiDB Cloud migration
-│   ├── SKILL.md                Claude Code skill (interactive migration guide)
-│   ├── references/             Type mappings, compatibility rules, scoring
-│   ├── tishift_mssql/          Python CLI toolkit
-│   │   ├── scan/               Schema collectors, analyzers, reporters
-│   │   ├── convert/            DDL generation, query rewriting, code stubs
-│   │   ├── load/               Direct, DMS, Lightning, ticloud import
-│   │   ├── check/              Row count, column, checksum validation
-│   │   ├── sync/               CDC via DM, DMS, Changefeeds
-│   │   └── rules/              Type mapping, compatibility, T-SQL patterns
-│   └── tests/                  Unit and integration tests
-│
-├── aurora-to-tidb/             Aurora MySQL → TiDB Cloud migration
-│   ├── SKILL.md                Claude Code skill
-│   ├── references/             Compatibility rules, load strategies, scoring
-│   ├── tishift/                Python CLI toolkit
-│   └── tests/                  Unit and integration tests
-│
-└── LICENSE                     MIT
-```
-
-## Configuration
-
-TiShift uses YAML config files with environment variable support for credentials:
+The CLI uses YAML config files with environment variable support for credentials:
 
 ```yaml
 source:
@@ -130,7 +141,7 @@ target:
 
 See `config/tishift-mssql.example.yaml` for the full configuration reference.
 
-## Tests
+### Tests
 
 ```bash
 # SQL Server toolkit
@@ -138,6 +149,37 @@ cd sqlserver-to-tidb && pytest tests -q
 
 # Aurora toolkit
 cd aurora-to-tidb && pytest tests -q
+```
+
+## Project Structure
+
+```
+TiShift/
+├── sqlserver-to-tidb/          SQL Server → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── tishift_mssql/          Python CLI toolkit
+│   │   ├── scan/               Schema collectors, analyzers, reporters
+│   │   ├── convert/            DDL generation, query rewriting, code stubs
+│   │   ├── load/               Direct, DMS, Lightning, ticloud import
+│   │   ├── check/              Row count, column, checksum validation
+│   │   ├── sync/               CDC via DM, DMS, Changefeeds
+│   │   └── rules/              Type mapping, compatibility, T-SQL patterns
+│   └── tests/                  Unit and integration tests
+│
+├── aurora-to-tidb/             Aurora MySQL → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Compatibility rules, load strategies, scoring
+│   ├── tishift/                Python CLI toolkit
+│   │   ├── scan/               Schema collectors, analyzers, reporters
+│   │   ├── convert/            DDL generation, query rewriting, code stubs
+│   │   ├── load/               Direct, DMS, Cloud Import, Lightning
+│   │   ├── check/              Row count, column, checksum validation
+│   │   ├── sync/               CDC via DM, DMS, Changefeeds
+│   │   └── rules/              Compatibility rules, type mapping
+│   └── tests/                  Unit and integration tests
+│
+└── LICENSE                     MIT
 ```
 
 ## License
