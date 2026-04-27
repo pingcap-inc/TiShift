@@ -1,4 +1,4 @@
-"""AI analyzer for stored procedures using Claude API."""
+"""AI analyzer for stored procedures using OpenAI-compatible API."""
 
 from __future__ import annotations
 
@@ -104,24 +104,21 @@ def _build_prompt(proc: RoutineInfo) -> str:
     )
 
 
-def _call_claude(prompt: str, config: AIConfig) -> dict[str, Any]:
+def _call_ai(prompt: str, config: AIConfig) -> dict[str, Any]:
     try:
-        import anthropic  # type: ignore
+        import openai  # type: ignore
     except ImportError as exc:
-        raise RuntimeError("anthropic dependency not installed; install tishift[ai]") from exc
+        raise RuntimeError("openai dependency not installed; install tishift[ai]") from exc
 
-    client = anthropic.Anthropic(api_key=config.api_key)
-    msg = client.messages.create(
+    client = openai.OpenAI(api_key=config.api_key)
+    resp = client.chat.completions.create(
         model=config.model,
         max_tokens=1200,
         temperature=0,
         messages=[{"role": "user", "content": prompt}],
     )
 
-    content = ""
-    for block in msg.content:
-        if hasattr(block, "text"):
-            content += block.text
+    content = resp.choices[0].message.content or ""
     if not content:
         raise ValueError("Empty response from AI provider")
     return _parse_ai_json(content)
@@ -166,7 +163,7 @@ def analyze_stored_procedures(
 
         prompt = _build_prompt(routine)
         try:
-            data = _call_claude(prompt, config)
+            data = _call_ai(prompt, config)
         except Exception as exc:
             logger.warning("AI analysis failed for %s.%s: %s", routine.routine_schema, routine.routine_name, exc)
             analyses.append(analysis)

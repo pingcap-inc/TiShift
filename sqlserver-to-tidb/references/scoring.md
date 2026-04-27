@@ -124,9 +124,9 @@ ops_score = MAX(ops_score, 0)
 ```
 total = schema_score + code_score + query_score + data_score + ops_score
 
->= 85: EXCELLENT  — straightforward migration, mostly automated
-70-84: GOOD       — manageable with some manual work
-50-69: MODERATE   — significant conversion effort needed
+>= 90: EXCELLENT  — straightforward migration, mostly automated
+75-89: GOOD       — manageable with some manual work
+50-74: MODERATE   — significant conversion effort needed
 25-49: CHALLENGING — major redesign for several components
 < 25:  DIFFICULT  — extensive manual work, consider phased approach
 ```
