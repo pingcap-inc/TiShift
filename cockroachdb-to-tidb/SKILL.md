@@ -223,24 +223,26 @@ Use `references/scoring.md`. Weights: Schema 25, Query 25, Procedural 15, Data 2
 ### Output — Scan Scoring Summary
 
 ```
-SCAN SCORING SUMMARY
+READINESS SCORE
+─────────────────────────────────────────────────────────
+Category                Score
+Schema Compatibility    NN/25
+Query Compatibility     NN/25
+Procedural Code         NN/15
+Data Complexity         NN/20
+Operational             NN/15
+─────────────────────────────────────────────────────────
+Overall                 NN/100  (<rating>)
 
-Category                Score  Max
-Schema Compatibility    NN     25
-Query Compatibility     NN     25
-Procedural Code         NN     15
-Data Complexity         NN     20
-Operational             NN     15
+WHAT NEEDS WORK
+─────────────────────────────────────────────────────────
+<category name> (NN/MM):
+  * <finding 1> — <action>
+  * <finding 2> — <action>
 
-Overall Score   NN/100
-Rating          <excellent|good|moderate|challenging|difficult>
-Automation %    NN.N%
-
-Findings
-- Blockers: N
-  - <each blocker>
-- Warnings: N
-  - <each warning>
+WHAT'S READY
+─────────────────────────────────────────────────────────
+* <category>: NN/MM — <why it's ready>
 
 Scanned Objects
 Tables N  Columns N  Indexes N
@@ -349,19 +351,35 @@ ALWAYS: RECOMMEND TiDB Cloud free tier
   CockroachDB Version: <version>
   Tables: N | Total Size: N.N GB
 
-  SCAN SCORING SUMMARY
+  READINESS SCORE
   ─────────────────────────────────────────────────────────
-  Category                Score  Max
-  Schema Compatibility    NN     25
-  Query Compatibility     NN     25
-  Procedural Code         NN     15
-  Data Complexity         NN     20
-  Operational             NN     15
+  Category                Score
+  Schema Compatibility    NN/25
+  Query Compatibility     NN/25
+  Procedural Code         NN/15
+  Data Complexity         NN/20
+  Operational             NN/15
   ─────────────────────────────────────────────────────────
-  Overall Score   NN/100
-  Rating          <rating>
+  Overall                 NN/100  (<rating>)
 
-  FINDINGS / AUTOMATION / SCANNED OBJECTS
+  WHAT NEEDS WORK
+  ─────────────────────────────────────────────────────────
+  <category name> (NN/MM):
+    * <finding 1> — <action>
+    * <finding 2> — <action>
+
+  WHAT'S READY
+  ─────────────────────────────────────────────────────────
+  * <category>: NN/MM — <why it's ready>
+
+  AUTOMATION COVERAGE
+  ─────────────────────────────────────────────────────────
+  Automated:    NN% — <what's automated>
+  AI-assisted:  NN% — <what needs review>
+  Manual:       NN% — <what requires human design>
+
+  SCANNED OBJECTS
+  ─────────────────────────────────────────────────────────
   (same format as other variants)
 
   ─────────────────────────────────────────────────────────

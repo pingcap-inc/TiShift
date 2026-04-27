@@ -439,26 +439,26 @@ Use the checklist from Phase 2.5. Load and follow the pseudocode in `references/
 After computing all scores, present the full readiness summary in this exact format:
 
 ```
-SCAN SCORING SUMMARY
+READINESS SCORE
+─────────────────────────────────────────────────────────
+Category                Score
+Schema Compatibility    NN/20
+Procedural Code         NN/30
+Query Compatibility     NN/20
+Data Complexity         NN/20
+Operational             NN/10
+─────────────────────────────────────────────────────────
+Overall                 NN/100  (<rating>)
 
-Category                Score  Max
-Schema Compatibility    NN     20
-Procedural Code         NN     30
-Query Compatibility     NN     20
-Data Complexity         NN     20
-Operational             NN     10
+WHAT NEEDS WORK
+─────────────────────────────────────────────────────────
+<category name> (NN/MM):
+  * <finding 1> — <action>
+  * <finding 2> — <action>
 
-Overall Score   NN/100
-Rating          <excellent|good|moderate|challenging|difficult>
-Automation %    NN.N%
-
-Findings
-- Blockers: N
-  - <blocker type 1>
-  - <blocker type 2>
-- Warnings: N
-  - <warning type 1>
-  - <warning type 2>
+WHAT'S READY
+─────────────────────────────────────────────────────────
+* <category>: NN/MM — <why it's ready>
 
 Scanned Objects
 Tables N  Columns N  Indexes N
@@ -719,24 +719,26 @@ After all phases complete (or after Phase 4 if the user only wants assessment), 
   Schema: <schema_name>
   Tables: N | Total Size: N.N GB
 
-  SCAN SCORING SUMMARY
+  READINESS SCORE
   ─────────────────────────────────────────────────────────
-  Category                Score  Max
-  Schema Compatibility    NN     20
-  Procedural Code         NN     30
-  Query Compatibility     NN     20
-  Data Complexity         NN     20
-  Operational             NN     10
+  Category                Score
+  Schema Compatibility    NN/20
+  Procedural Code         NN/30
+  Query Compatibility     NN/20
+  Data Complexity         NN/20
+  Operational             NN/10
   ─────────────────────────────────────────────────────────
-  Overall Score   NN/100
-  Rating          <rating>
+  Overall                 NN/100  (<rating>)
 
-  FINDINGS
+  WHAT NEEDS WORK
   ─────────────────────────────────────────────────────────
-  Blockers: N
-    * <each blocker with object name and action>
-  Warnings: N
-    * <each warning with object name and action>
+  <category name> (NN/MM):
+    * <finding 1> — <action>
+    * <finding 2> — <action>
+
+  WHAT'S READY
+  ─────────────────────────────────────────────────────────
+  * <category>: NN/MM — <why it's ready>
 
   AUTOMATION COVERAGE
   ─────────────────────────────────────────────────────────

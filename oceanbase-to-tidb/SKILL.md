@@ -132,18 +132,32 @@ Load `references/scoring.md`. Use mode-appropriate weights:
   Compatibility Mode: <MYSQL | ORACLE>
   Tables: N | Total Size: N.N GB
 
-  SCAN SCORING SUMMARY
+  READINESS SCORE
   ─────────────────────────────────────────────────────────
-  Category                Score  Max
-  Schema Compatibility    NN     <25|20>
-  Procedural Code         NN     <15|30>
-  Query Compatibility     NN     20
-  Data Complexity         NN     20
-  Operational             NN     <20|10>
+  Category                Score
+  Schema Compatibility    NN/<25|20>
+  Procedural Code         NN/<15|30>
+  Query Compatibility     NN/20
+  Data Complexity         NN/20
+  Operational             NN/<20|10>
   ─────────────────────────────────────────────────────────
-  Overall Score   NN/100
-  Rating          <rating>
-  ...
+  Overall                 NN/100  (<rating>)
+
+  WHAT NEEDS WORK
+  ─────────────────────────────────────────────────────────
+  <category name> (NN/MM):
+    * <finding 1> — <action>
+    * <finding 2> — <action>
+
+  WHAT'S READY
+  ─────────────────────────────────────────────────────────
+  * <category>: NN/MM — <why it's ready>
+
+  AUTOMATION COVERAGE
+  ─────────────────────────────────────────────────────────
+  Automated:    NN% — <what's automated>
+  AI-assisted:  NN% — <what needs review>
+  Manual:       NN% — <what requires human design>
 ═══════════════════════════════════════════════════════════
 ```
 
