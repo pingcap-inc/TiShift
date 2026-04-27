@@ -342,6 +342,33 @@ class ScoringResult:
             return Rating.CHALLENGING
         return Rating.DIFFICULT
 
+    def density_note(self, checklist: dict) -> str | None:
+        """Return a qualitative note when blocker density is high."""
+        table_count = checklist.get("table_count", 0)
+        if table_count == 0:
+            return None
+        blocker_objects = (
+            checklist.get("stored_procedure_count", 0)
+            + checklist.get("function_count", 0)
+            + checklist.get("trigger_count", 0)
+            + checklist.get("event_count", 0)
+        )
+        total_objects = (
+            table_count
+            + checklist.get("view_count", 0)
+            + blocker_objects
+        )
+        if total_objects == 0:
+            return None
+        ratio = blocker_objects / total_objects
+        if ratio > 0.3:
+            return (
+                f"Note: {blocker_objects} blockers across {total_objects} total objects "
+                f"({ratio:.0%} density). Migration effort per object is significant "
+                f"despite the overall score."
+            )
+        return None
+
 
 # ---------------------------------------------------------------------------
 # Automation Coverage (from automation analyzer)

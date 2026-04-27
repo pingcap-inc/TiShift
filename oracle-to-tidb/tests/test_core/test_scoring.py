@@ -396,3 +396,62 @@ class TestScoreMigration:
                 ops=CategoryScore("O", min(max(total - 90, 0), 10), 10, []),
             )
             assert result.rating == expected, f"total={total}, expected={expected}, got={result.rating}"
+
+
+class TestDensityNote:
+    def test_high_density_triggers_note(self):
+        """Small schema with many blockers should produce a warning note."""
+        checklist = {
+            "table_count": 3,
+            "stored_procedure_count": 2,
+            "function_count": 0,
+            "package_count": 1,
+            "trigger_count": 1,
+            "mview_count": 1,
+            "dblink_count": 0,
+            "view_count": 2,
+            "sequence_count": 3,
+        }
+        result = score_migration(checklist, target_tier="dedicated")
+        note = result.density_note(checklist)
+        assert note is not None
+        assert "density" in note
+        # 5 blockers / 13 total = 38%
+        assert "38%" in note
+
+    def test_low_density_no_note(self):
+        """Large schema with few blockers should produce no note."""
+        checklist = {
+            "table_count": 300,
+            "stored_procedure_count": 2,
+            "function_count": 0,
+            "package_count": 0,
+            "trigger_count": 1,
+            "mview_count": 0,
+            "dblink_count": 0,
+            "view_count": 20,
+            "sequence_count": 10,
+        }
+        result = score_migration(checklist, target_tier="dedicated")
+        note = result.density_note(checklist)
+        assert note is None
+
+    def test_zero_blockers_no_note(self):
+        checklist = {
+            "table_count": 5,
+            "stored_procedure_count": 0,
+            "function_count": 0,
+            "package_count": 0,
+            "trigger_count": 0,
+            "mview_count": 0,
+            "dblink_count": 0,
+            "view_count": 2,
+            "sequence_count": 1,
+        }
+        result = score_migration(checklist, target_tier="dedicated")
+        assert result.density_note(checklist) is None
+
+    def test_empty_schema_no_note(self):
+        checklist = {"table_count": 0}
+        result = score_migration(checklist, target_tier="dedicated")
+        assert result.density_note(checklist) is None

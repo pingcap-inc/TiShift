@@ -267,15 +267,42 @@ class ScoringResult:
     @property
     def rating(self) -> Rating:
         score = self.overall_score
-        if score >= 85:
+        if score >= 90:
             return Rating.EXCELLENT
-        if score >= 70:
+        if score >= 75:
             return Rating.GOOD
         if score >= 50:
             return Rating.MODERATE
         if score >= 25:
             return Rating.CHALLENGING
         return Rating.DIFFICULT
+
+    def density_note(self, checklist: dict) -> str | None:
+        """Return a qualitative note when blocker density is high."""
+        table_count = checklist.get("table_count", 0)
+        if table_count == 0:
+            return None
+        blocker_objects = (
+            checklist.get("stored_procedure_count", 0)
+            + checklist.get("trigger_count", 0)
+            + checklist.get("assembly_count", 0)
+            + checklist.get("linked_server_count", 0)
+        )
+        total_objects = (
+            table_count
+            + checklist.get("view_count", 0)
+            + blocker_objects
+        )
+        if total_objects == 0:
+            return None
+        ratio = blocker_objects / total_objects
+        if ratio > 0.3:
+            return (
+                f"Note: {blocker_objects} blockers across {total_objects} total objects "
+                f"({ratio:.0%} density). Migration effort per object is significant "
+                f"despite the overall score."
+            )
+        return None
 
 
 @dataclass

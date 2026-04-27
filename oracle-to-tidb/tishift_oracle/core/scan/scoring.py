@@ -49,6 +49,40 @@ class ScoringResult:
             return "challenging"
         return "difficult"
 
+    def density_note(self, checklist: dict[str, Any]) -> str | None:
+        """Return a qualitative note when blocker density is high.
+
+        A small schema with many blockers deserves a caveat even if the
+        absolute score looks healthy — migration effort per object is high.
+        """
+        table_count = checklist.get("table_count", 0)
+        if table_count == 0:
+            return None
+        blocker_objects = (
+            checklist.get("stored_procedure_count", 0)
+            + checklist.get("function_count", 0)
+            + checklist.get("package_count", 0)
+            + checklist.get("trigger_count", 0)
+            + checklist.get("mview_count", 0)
+            + checklist.get("dblink_count", 0)
+        )
+        total_objects = (
+            table_count
+            + checklist.get("view_count", 0)
+            + checklist.get("sequence_count", 0)
+            + blocker_objects
+        )
+        if total_objects == 0:
+            return None
+        ratio = blocker_objects / total_objects
+        if ratio > 0.3:
+            return (
+                f"Note: {blocker_objects} blockers across {total_objects} total objects "
+                f"({ratio:.0%} density). Migration effort per object is significant "
+                f"despite the overall score."
+            )
+        return None
+
 
 def _score_schema(checklist: dict[str, Any]) -> CategoryScore:
     score = 20
