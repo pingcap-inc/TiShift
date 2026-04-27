@@ -2,8 +2,23 @@
 .env
 *.env.local
 venv/
+.venv/
 __pycache__/
 *.pyc
+
+# Python build
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Claude Code worktrees
+.claude/
 
 # IDE
 .idea/
@@ -24,7 +39,7 @@ credentials/
 *.log
 logs/
 
-# Internal documents
+# Internal documents — do not commit
 *.docx
 *.pptx
 
@@ -32,3 +47,8 @@ logs/
 *.class
 target/
 node_modules/
+
+# Internal files that must not be published
+aurora-to-tidb/tishift-daemon-prompt.md
+aurora-to-tidb/aurora-to-tidb-migration-plan.md
+aurora-to-tidb/estimate_tokens.py

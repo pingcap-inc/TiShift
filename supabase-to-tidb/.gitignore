@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+.env.*
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.coverage
+htmlcov/
+tishift-reports/
+migration-output/
+*.log
+tishift-supabase.yaml
+.DS_Store

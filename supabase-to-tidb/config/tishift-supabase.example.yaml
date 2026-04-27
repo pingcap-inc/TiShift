@@ -1,0 +1,90 @@
+source:
+  # Supabase connection. Three endpoint shapes are valid:
+  #   Direct        — db.{project_ref}.supabase.co:5432         user: postgres
+  #   Session pool  — aws-0-{region}.pooler.supabase.com:5432   user: postgres.{project_ref}
+  #   Txn pool      — aws-0-{region}.pooler.supabase.com:6543   user: postgres.{project_ref}   (REFUSED)
+  #
+  # TiShift refuses port 6543 (transaction mode) — it breaks pg_dump, prepared statements,
+  # and logical replication. Use session mode (5432) for scan and load; use the direct
+  # endpoint for sync (replication requires direct TCP, not pooler).
+  host: db.abcdefghijklmnop.supabase.co
+  port: 5432
+  user: postgres
+  password: ${TISHIFT_SOURCE_PASSWORD}
+  database: postgres
+  sslmode: require
+
+  # Schema filter. The 13 Supabase-internal schemas below are always excluded —
+  # they contain platform state (auth users, storage metadata, Realtime config,
+  # encryption keys). Add user-created schemas to schema_include if your app
+  # uses them alongside 'public'.
+  schema_include:
+    - public
+  schema_exclude:
+    - auth
+    - storage
+    - realtime
+    - _realtime
+    - extensions
+    - graphql
+    - graphql_public
+    - supabase_migrations
+    - vault
+    - pgsodium
+    - pgsodium_masks
+    - net
+    - pgbouncer
+    - _analytics
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp
+  tls: true
+  # TiDB Cloud tier: starter (default), essential, dedicated, or self-hosted
+  # Starter: free up to 25 GiB, import via ticloud CLI, no CDC sync
+  # Essential: autoscaling, Changefeeds, 99.99% SLA
+  # Dedicated: full HTAP, Lightning, DM, PCI-DSS, SOC 2
+  tier: starter
+
+# TiDB Cloud settings (required for Starter/Essential ticloud CLI import)
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+# AWS settings (used for DMS strategy with Dedicated tier, and for storage-object sync)
+aws:
+  region: us-east-1
+  profile: default
+
+ai:
+  provider: none  # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
+
+logging:
+  level: info
+  file: tishift-supabase.log
+
+metrics:
+  enabled: false
+  port: 9090
+
+# Sync (CDC) settings — used only by `tishift-supabase sync`
+sync:
+  # Slot and publication names. TiShift creates its own — it NEVER reuses
+  # 'supabase_realtime' (that slot is owned by Supabase's Realtime service
+  # and is load-bearing on production).
+  slot_name: tishift_migration
+  publication_name: tishift_pub
+  # Must use the direct endpoint for replication; pooler does not proxy
+  # replication protocol. Override source.host here if your scan/load config
+  # uses the session-mode pooler.
+  replication_host: db.abcdefghijklmnop.supabase.co
+  replication_port: 5432

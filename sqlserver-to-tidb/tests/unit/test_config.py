@@ -80,7 +80,7 @@ target:
 aws:
   region: us-west-2
 ai:
-  provider: claude
+  provider: openai
   api_key: sk-test
 output:
   dir: ./reports
@@ -96,7 +96,7 @@ metrics:
         assert cfg.source.instance == "MSSQLSERVER"
         assert cfg.target.password == "tidb123"
         assert cfg.aws.region == "us-west-2"
-        assert cfg.ai.provider == "claude"
+        assert cfg.ai.provider == "openai"
         assert cfg.output.formats == ["json", "html"]
         assert cfg.logging.level == "debug"
         assert cfg.metrics.port == 9091

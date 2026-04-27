@@ -25,7 +25,7 @@ dev = [
     "pytest-cov>=4.0",
 ]
 ai = [
-    "anthropic>=0.30",
+    "openai>=1.0",
 ]
 aws = [
     "boto3>=1.28",

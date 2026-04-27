@@ -62,7 +62,7 @@ class AWSConfig(BaseModel):
 class AIConfig(BaseModel):
     provider: str = "none"
     api_key: str = ""
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "gpt-4o"
 
 
 class OutputConfig(BaseModel):

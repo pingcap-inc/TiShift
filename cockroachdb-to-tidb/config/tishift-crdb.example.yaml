@@ -1,0 +1,44 @@
+# TiShift CockroachDB — Configuration
+
+source:
+  host: free-tier.crdb.io
+  port: 26257
+  user: tishift_readonly
+  password: ${TISHIFT_CRDB_PASSWORD}
+  database: myapp
+  sslmode: verify-full
+  sslrootcert: /path/to/cc-ca.crt  # CockroachDB Cloud CA cert
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp
+  tls: true
+  tier: starter     # starter | essential | dedicated | self-hosted
+
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+aws:
+  region: us-east-1
+  profile: default
+
+ai:
+  provider: none    # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
+
+logging:
+  level: info
+  file: tishift-crdb.log
+
+metrics:
+  enabled: false
+  port: 9090

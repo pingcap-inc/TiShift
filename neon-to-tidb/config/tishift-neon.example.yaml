@@ -1,0 +1,45 @@
+source:
+  # Neon connection string — use DIRECT (unpooled) connection
+  # Pooled connections (with -pooler suffix or port 6543) will NOT work
+  # for pg_dump, COPY, or logical replication
+  host: ep-cool-darkness-123456.us-east-2.aws.neon.tech
+  port: 5432
+  user: neondb_owner
+  password: ${TISHIFT_SOURCE_PASSWORD}
+  database: neondb
+  sslmode: require  # Neon requires SSL
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp
+  tls: true
+  # TiDB Cloud tier: starter (default), essential, dedicated, or self-hosted
+  # Starter: free up to 25 GiB, import via ticloud CLI, no CDC sync
+  # Essential: autoscaling, Changefeeds, 99.99% SLA
+  # Dedicated: full HTAP, Lightning, DM, PCI-DSS, SOC 2
+  tier: starter
+
+# TiDB Cloud settings (required for Starter/Essential ticloud CLI import)
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+ai:
+  provider: none   # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
+
+logging:
+  level: info
+  file: tishift-neon.log
+
+metrics:
+  enabled: false
+  port: 9090

@@ -35,8 +35,8 @@ aws:
 
 ai:
   provider: none
-  api_key: ${ANTHROPIC_API_KEY}
-  model: claude-sonnet-4-20250514
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
 
 output:
   dir: ./tishift-reports

@@ -8,6 +8,12 @@ TiShift automates the heavy lifting of migrating from legacy databases to TiDB C
 
 | Source | Target | Status |
 |---|---|---|
+| **OceanBase** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **CockroachDB** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **Cloud Spanner** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **Neon / PostgreSQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **Supabase** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **Oracle Database** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **SQL Server / MSSQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **Aurora MySQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 
@@ -48,6 +54,36 @@ cd TiShift
 
 ### 2. Run the skill for your source database
 
+#### OceanBase to TiDB Cloud
+
+```
+/oceanbase-to-tidb
+```
+
+#### CockroachDB to TiDB Cloud
+
+```
+/cockroachdb-to-tidb
+```
+
+#### Cloud Spanner to TiDB Cloud
+
+```
+/spanner-to-tidb
+```
+
+#### Neon / PostgreSQL to TiDB Cloud
+
+```
+/neon-to-tidb
+```
+
+#### Supabase to TiDB Cloud
+
+```
+/supabase-to-tidb
+```
+
 #### Aurora MySQL to TiDB Cloud
 
 ```
@@ -58,6 +94,12 @@ cd TiShift
 
 ```
 /sqlserver-to-tidb
+```
+
+#### Oracle to TiDB Cloud
+
+```
+/oracle-to-tidb
 ```
 
 The skill will walk you through each phase — connecting to your databases, scanning the source schema, assessing compatibility, converting DDL, loading data, and validating the result. Follow the prompts; no additional setup is required.
@@ -76,6 +118,118 @@ TiShift is Cloud-first and defaults to **TiDB Cloud Starter** (free tier). It au
 ## Optional: CLI Toolkit
 
 For environments where AI-assisted migration is not available, TiShift also provides deterministic Python CLI scripts that cover the same workflow.
+
+### OceanBase to TiDB Cloud
+
+```bash
+cd oceanbase-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-ob.example.yaml tishift-ob.yaml
+# Edit with OceanBase credentials (port 2881, user@tenant)
+
+tishift-ob scan --config tishift-ob.yaml --format cli --format json
+tishift-ob convert --scan-report ./tishift-reports/report.json --dry-run
+tishift-ob load --config tishift-ob.yaml --strategy auto
+tishift-ob check --config tishift-ob.yaml
+```
+
+### CockroachDB to TiDB Cloud
+
+```bash
+cd cockroachdb-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-crdb.example.yaml tishift-crdb.yaml
+# Edit with your CockroachDB and TiDB credentials
+
+# Scan and assess
+tishift-crdb scan --config tishift-crdb.yaml --format cli --format json
+
+# Convert schema
+tishift-crdb convert --scan-report ./tishift-reports/report.json --dry-run
+
+# Load data (uses EXPORT INTO CSV from CockroachDB)
+tishift-crdb load --config tishift-crdb.yaml --strategy auto
+
+# Validate
+tishift-crdb check --config tishift-crdb.yaml
+```
+
+### Cloud Spanner to TiDB Cloud
+
+```bash
+cd spanner-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-spanner.example.yaml tishift-spanner.yaml
+# Set GOOGLE_APPLICATION_CREDENTIALS or run gcloud auth application-default login
+
+# Scan and assess
+tishift-spanner scan --config tishift-spanner.yaml --format cli --format json
+
+# Convert schema
+tishift-spanner convert --scan-report ./tishift-reports/tishift-spanner-report.json --dry-run
+
+# Load data (requires GCS bucket for Dataflow export)
+tishift-spanner load --config tishift-spanner.yaml --strategy auto
+
+# Validate
+tishift-spanner check --config tishift-spanner.yaml
+```
+
+### Neon / PostgreSQL to TiDB Cloud
+
+```bash
+cd neon-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-neon.example.yaml tishift-neon.yaml
+# Edit tishift-neon.yaml with your source and target credentials
+
+# Scan and assess
+tishift-neon scan --config tishift-neon.yaml --format cli --format json
+
+# Convert schema
+tishift-neon convert --scan-report ./tishift-reports/tishift-neon-report.json --dry-run
+
+# Load data
+tishift-neon load --config tishift-neon.yaml --strategy auto
+
+# Validate
+tishift-neon check --config tishift-neon.yaml
+```
+
+### Supabase to TiDB Cloud
+
+```bash
+cd supabase-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-supabase.example.yaml tishift-supabase.yaml
+# Edit tishift-supabase.yaml with your Supabase and TiDB credentials.
+# Use the direct endpoint (db.{ref}.supabase.co:5432) or the session-mode pooler
+# (port 5432 on *.pooler.supabase.com). The transaction-mode pooler (port 6543)
+# is refused — it breaks pg_dump, prepared statements, and replication.
+
+# Scan and assess — extracts every RLS policy as a structured rewrite checklist
+tishift-supabase scan --config tishift-supabase.yaml --format cli --format json
+
+# Convert schema (also emits the external-work plan for PostgREST / GoTrue /
+# Realtime / Storage replacements that live outside the DB)
+tishift-supabase convert --scan-report ./tishift-reports/tishift-supabase-report.json --dry-run
+
+# Load data (schema allow-list mandatory — public + user schemas only)
+tishift-supabase load --config tishift-supabase.yaml --strategy auto
+
+# Validate
+tishift-supabase check --config tishift-supabase.yaml
+```
 
 ### SQL Server to TiDB Cloud
 
@@ -98,6 +252,29 @@ tishift-mssql load --config tishift-mssql.yaml --strategy auto
 
 # Validate
 tishift-mssql check --config tishift-mssql.yaml
+```
+
+### Oracle to TiDB Cloud
+
+```bash
+cd oracle-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-oracle.example.yaml tishift-oracle.yaml
+# Edit tishift-oracle.yaml with your source and target credentials
+
+# Scan and assess
+tishift-oracle scan --config tishift-oracle.yaml --format cli --format json
+
+# Convert schema
+tishift-oracle convert --scan-report ./tishift-reports/report.json --dry-run
+
+# Load data
+tishift-oracle load --config tishift-oracle.yaml --strategy auto
+
+# Validate
+tishift-oracle check --config tishift-oracle.yaml
 ```
 
 ### Aurora MySQL to TiDB Cloud
@@ -144,6 +321,15 @@ See `config/tishift-mssql.example.yaml` for the full configuration reference.
 ### Tests
 
 ```bash
+# Spanner toolkit
+cd spanner-to-tidb && pytest tests -q
+
+# Neon toolkit
+cd neon-to-tidb && pytest tests -q
+
+# Supabase toolkit
+cd supabase-to-tidb && pytest tests -q
+
 # SQL Server toolkit
 cd sqlserver-to-tidb && pytest tests -q
 
@@ -155,6 +341,67 @@ cd aurora-to-tidb && pytest tests -q
 
 ```
 TiShift/
+├── oceanbase-to-tidb/          OceanBase → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (dual-mode: MySQL + Oracle)
+│   ├── references/             Type mappings (both modes), compatibility rules, scoring
+│   ├── tishift_ob/             Python CLI toolkit
+│   └── tests/
+│
+├── cockroachdb-to-tidb/        CockroachDB → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── tishift_crdb/           Python CLI toolkit
+│   └── tests/
+│
+├── spanner-to-tidb/            Cloud Spanner → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── tishift_spanner/        Python CLI toolkit
+│   │   ├── core/scan/          Schema collectors, analyzers, reporters
+│   │   ├── core/convert/       DDL generation, interleave flattening
+│   │   ├── core/load/          Dataflow export, GCS download, Lightning
+│   │   ├── core/check/         Row count, column, checksum validation
+│   │   ├── core/sync/          CDC via Change Streams
+│   │   └── rules/              Type mapping, compatibility, GoogleSQL patterns
+│   └── tests/                  Unit and integration tests
+│
+├── oracle-to-tidb/             Oracle → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── tishift_oracle/         Python CLI toolkit
+│   │   ├── core/scan/          Schema collectors, analyzers, reporters
+│   │   ├── core/convert/       DDL generation, PL/SQL rewriting, code stubs
+│   │   ├── core/load/          CSV extraction, DMS, Lightning, ticloud import
+│   │   ├── core/check/         Row count, column, NULL semantics validation
+│   │   ├── core/sync/          CDC via DMS, Debezium
+│   │   └── rules/              Type mapping, compatibility, Oracle patterns
+│   └── tests/                  Unit and integration tests
+│
+├── neon-to-tidb/               Neon/Postgres → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── tishift_neon/           Python CLI toolkit
+│   │   ├── core/scan/          Schema collectors, analyzers, reporters
+│   │   ├── core/convert/       DDL generation, query rewriting, code stubs
+│   │   ├── core/load/          Direct, DMS, Lightning, ticloud import
+│   │   ├── core/check/         Row count, column, checksum validation
+│   │   ├── core/sync/          CDC via logical replication
+│   │   └── rules/              Type mapping, compatibility, PG patterns
+│   └── tests/                  Unit and integration tests
+│
+├── supabase-to-tidb/           Supabase → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring
+│   ├── docs/                   Getting started + phase-by-phase guides
+│   ├── tishift_supabase/       Python CLI toolkit
+│   │   ├── core/scan/          Schema + RLS + platform-signals collectors
+│   │   ├── core/convert/       DDL, RLS rewrite checklist, external-work plan
+│   │   ├── core/load/          Direct, DMS, Lightning, ticloud (schema allow-list)
+│   │   ├── core/check/         Row count, column, checksum validation
+│   │   ├── core/sync/          CDC via logical replication (direct endpoint only)
+│   │   └── rules/              Type mapping, compatibility, Supabase helpers
+│   └── tests/                  Unit and integration tests
+│
 ├── sqlserver-to-tidb/          SQL Server → TiDB Cloud migration
 │   ├── SKILL.md                AI skill (interactive migration guide)
 │   ├── references/             Type mappings, compatibility rules, scoring
@@ -179,9 +426,9 @@ TiShift/
 │   │   └── rules/              Compatibility rules, type mapping
 │   └── tests/                  Unit and integration tests
 │
-└── LICENSE                     MIT
+└── LICENSE                     Apache 2.0
 ```
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)

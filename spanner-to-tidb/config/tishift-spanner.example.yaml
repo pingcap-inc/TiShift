@@ -1,0 +1,46 @@
+source:
+  # Cloud Spanner uses GCP project/instance/database, not host/port
+  project_id: my-gcp-project
+  instance_id: my-spanner-instance
+  database_id: my-database
+  # Authentication: service account key file or Application Default Credentials
+  # Option 1: Set GOOGLE_APPLICATION_CREDENTIALS env var to the key file path
+  # Option 2: Run 'gcloud auth application-default login' for local dev
+  credentials_file: ${GOOGLE_APPLICATION_CREDENTIALS}
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp
+  tls: true
+  # TiDB Cloud tier: starter (default), essential, dedicated, or self-hosted
+  tier: starter
+
+# GCS bucket for Dataflow exports (required for load with databases > 1 GB)
+gcs:
+  bucket: tishift-export-${PROJECT_ID}
+  prefix: spanner-export/
+
+# TiDB Cloud settings (required for Starter/Essential ticloud CLI import)
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+ai:
+  provider: none   # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
+
+logging:
+  level: info
+  file: tishift-spanner.log
+
+metrics:
+  enabled: false
+  port: 9090

@@ -1,0 +1,52 @@
+# TiShift Oracle — Configuration
+#
+# Copy this file to tishift-oracle.yaml and fill in your credentials.
+# Use environment variables for secrets: ${ENV_VAR_NAME}
+
+source:
+  host: oracle-prod.example.com
+  port: 1521
+  service_name: ORCL
+  # Alternative: full connection string (TNS or Easy Connect Plus)
+  # connection_string: "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=oracle-prod.example.com)(PORT=1521))(CONNECT_DATA=(SERVICE_NAME=ORCL)))"
+  user: tishift_readonly
+  password: ${TISHIFT_ORACLE_PASSWORD}
+  schema: HR        # Schema to migrate, or "*" for all
+  mode: thin        # thin (default, no Oracle Client needed) or thick
+
+  # For Oracle Cloud (OCI) with Wallet authentication:
+  # wallet_location: /path/to/wallet
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: hr
+  tls: true
+  tier: starter     # starter | essential | dedicated | self-hosted
+
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+aws:
+  region: us-east-1
+  profile: default  # For DMS and S3 access
+
+ai:
+  provider: none    # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, html]
+
+logging:
+  level: info
+  file: tishift-oracle.log
+
+metrics:
+  enabled: false
+  port: 9090
