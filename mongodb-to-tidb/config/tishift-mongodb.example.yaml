@@ -1,0 +1,167 @@
+# TiShift — MongoDB → TiDB configuration.
+#
+# Copy to tishift-mongodb.yaml and edit. Environment variables interpolated
+# with ${VAR} syntax. Missing env vars raise an error at config load (no
+# silent empty-string substitution).
+
+source:
+  # MongoDB URI. Standard form covers host, port, auth, replica set, TLS:
+  #   mongodb://user:pass@host1:27017,host2:27017/db?replicaSet=rs0&authSource=admin
+  # Or DNS seed list (Atlas):
+  #   mongodb+srv://user:pass@cluster.abc.mongodb.net/db
+  #
+  # The password component is URL-encoded and may interpolate env vars.
+  uri: mongodb://migrator:${TISHIFT_SOURCE_PASS}@localhost:27017/myapp?authSource=admin&readPreference=secondaryPreferred
+
+  # Database to migrate. One per run in v1.
+  database: myapp
+
+  # Topology hint. auto = detected in Phase 1 via {hello: 1}.
+  # Values: standalone | replica_set | sharded | auto
+  topology_hint: auto
+
+  # Optional: explicit TLS settings. Most cases handled via URI params
+  # (tls=true, tlsCAFile=...) but config-level overrides win when present.
+  tls_ca_file: ""
+  tls_client_cert_key_file: ""
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp_migrated
+
+  # TLS. Strongly recommended for production. tls_ca pins to a specific CA;
+  # otherwise the system trust store is used.
+  tls: true
+  tls_ca: ""
+
+  # DANGER: only true for local dev against an untrusted self-signed cert.
+  # Production must leave false.
+  tls_insecure_skip_verify: false
+
+  # TiDB Cloud tier. Affects load strategy and CDC recommendations.
+  # Values: starter | essential | dedicated | byoc
+  tier: dedicated
+
+scan:
+  sample_size_per_collection: 200
+  full_scan_threshold_docs: 5000
+  subdocument_max_depth: 10
+  inventory_aggregations: true       # pull Atlas Performance Advisor + system.profile
+  inventory_indexes: true
+
+convert:
+  schema_policy_default: auto         # auto | json-mostly | hybrid | normalized
+  preserve_object_ids: true           # _id values land as VARCHAR(24) hex
+  emit_foreign_keys: true             # DBRef → FK when target in scope
+
+  aggregation_advisor:
+    enabled: true
+    # caller injects a CompletionFn callable at runtime; this field is the
+    # operator's signal "I have an LLM credentials configured"
+    completion_fn: ""
+
+  # Per-collection overrides (optional)
+  per_collection: {}
+  # Example:
+  # per_collection:
+  #   users:
+  #     policy: normalized
+  #     poly_fields:
+  #       age:
+  #         decision: coerce-to-int
+  #   audit_logs:
+  #     policy: json-mostly
+  #   products:
+  #     policy: hybrid
+  #     flatten_columns: [sku, name, price]
+  #     json_columns: [attributes, metadata]
+
+load:
+  # auto | direct | mongodump-lightning | aws-dms | datastream
+  strategy: auto
+
+  staging:
+    # Cloud-agnostic staging. Pick a backend you can write to from the
+    # mongodump runner and read from with TiDB Lightning.
+    # Values: s3 | gs | azure | local
+    backend: gs
+    base_url: gs://my-staging/mongo-export/
+    region: us-central1
+    # backend-specific auth notes:
+    #   s3: env AWS_ACCESS_KEY_ID/SECRET, instance profile, IRSA, or SSO
+    #   gs: ADC (gcloud auth application-default login), service-account JSON, or workload identity
+    #   azure: AZURE_STORAGE_CONNECTION_STRING or managed identity
+    #   local: filesystem permissions
+
+  mongodump:
+    parallel_collections: 4
+    per_shard_parallel: true          # for sharded clusters
+    use_oplog: true                   # --oplog flag
+
+  lightning:
+    backend: local                    # tikv-importer backend
+    pd_addr: ""                       # required for physical mode
+    sorted_kv_dir: /data/lightning-sort
+
+  # Optional: AWS DMS adapter ARNs (only if strategy=aws-dms)
+  aws_dms:
+    replication_instance_arn: ""
+    source_endpoint_arn: ""
+    target_endpoint_arn: ""
+
+  # Optional: Datastream adapter (only if strategy=datastream)
+  datastream:
+    stream_id: ""
+    region: us-central1
+    bigquery_dataset_id: mongo_export
+
+sync:
+  enabled: false
+
+  # direct-changestream is the TiDB-native primary path
+  # Values: direct-changestream | aws-dms | datastream | debezium
+  provider: direct-changestream
+
+  # Resume-token storage. Daemon survives restarts via this.
+  # Values: file | tidb
+  resume_token_storage: file
+  resume_token_table: _tishift_cdc_state
+
+  # Optional: high-throughput partitioning. Each partition runs as a separate
+  # daemon instance watching only its assigned collections.
+  partitions: []
+  # Example:
+  # partitions:
+  #   - name: hot
+  #     collections: [orders, sessions]
+  #   - name: warm
+  #     collections: [users, products]
+  #   - name: cold
+  #     collections: [audit_logs, archive]
+
+  # Provider-specific blocks (used if provider != direct-changestream)
+  aws_dms:
+    task_arn: ""
+  datastream:
+    stream_id: ""
+    bigquery_dataset_id: mongo_export
+    polling_interval_seconds: 30
+  debezium:
+    bootstrap_servers: ""
+    source_connector_name: ""
+    jdbc_sink_connector_name: ""
+
+check:
+  sample_size: 1000
+
+logging:
+  level: INFO
+  format: json
+  audit_log_path: ./tishift-output/audit.jsonl
+
+metrics:
+  enabled: true
+  port: 9090
