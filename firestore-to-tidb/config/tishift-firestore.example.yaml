@@ -1,0 +1,149 @@
+# TiShift — Firestore → TiDB configuration.
+#
+# Copy this file to `tishift-firestore.yaml` and edit. Environment variables
+# can be interpolated with ${VAR} syntax.
+
+source:
+  # GCP project containing the Firestore database
+  project_id: my-gcp-project
+
+  # Firestore database ID. Default is "(default)". Named databases can be
+  # passed explicitly.
+  database_id: "(default)"
+
+  # Optional: path to a service-account JSON key file. If blank, Application
+  # Default Credentials are used (gcloud auth application-default login OR
+  # Workload Identity in cloud deployments).
+  service_account_key: ""
+
+  # Firestore mode. Auto-detected in Phase 1 if absent.
+  # Values: native | datastore
+  # MongoDB-API mode is rejected — use the mongo-to-tidb skill instead.
+  mode: native
+
+  staging:
+    # GCS bucket for NDJSON staging during load. Must be in the same region
+    # as the Firestore database AND the TiDB target.
+    gcs_bucket: my-tishift-staging
+    gcs_prefix: firestore-export/
+    region: us-central1
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: firestore_migrated
+
+  # TLS. Strongly recommended for production. Set tls_ca to a PEM bundle path
+  # to pin verification to that CA; otherwise the system trust store is used.
+  tls: true
+  tls_ca: ""
+
+  # DANGER: set to true ONLY for local development against an untrusted
+  # self-signed cert. Production must leave this false.
+  tls_insecure_skip_verify: false
+
+  # TiDB Cloud tier. Affects load strategy and CDC recommendations.
+  # Values: starter | essential | dedicated | byoc
+  tier: byoc
+
+scan:
+  # Documents to sample per collection. Cost scales linearly (1 read op per
+  # sampled document).
+  sample_size_per_collection: 200
+
+  # Collections with fewer than this many docs are scanned in full.
+  full_scan_threshold_docs: 5000
+
+  # Cap on subcollection recursion depth.
+  subcollection_max_depth: 10
+
+  # Number of parent documents to descend into when discovering subcollections.
+  parent_sample_for_subcollections: 100
+
+convert:
+  # Default per-collection policy. The auto algorithm uses composite indexes
+  # to decide; see references/schema-policy.md.
+  # Values: auto | json-mostly | hybrid | normalized
+  schema_policy_default: auto
+
+  # Preserve Firestore-generated document IDs as the primary key column
+  # (VARCHAR(20)). Required to keep DocumentReference values valid.
+  preserve_document_ids: true
+
+  # Generate FOREIGN KEY constraints for DocumentReference fields whose
+  # target collection is in scan scope. Disable to speed up initial load;
+  # apply 03-foreign-keys.sql separately after load.
+  emit_foreign_keys: true
+
+  # Per-collection overrides. Optional.
+  per_collection: {}
+  # Example:
+  # per_collection:
+  #   users:
+  #     policy: normalized
+  #     geopoint_mapping:
+  #       location: lat_lng_columns
+  #   products:
+  #     policy: hybrid
+  #     flatten_columns: [price, sku, name]
+  #     json_columns: [attributes, metadata]
+  #     poly_fields:
+  #       price:
+  #         decision: json    # coerce | json | skip
+
+load:
+  # Strategy selection.
+  # Values: auto | direct | dataflow-cloudimport | dataflow-lightning |
+  #         dataflow-lightning-sharded
+  strategy: auto
+
+  dataflow:
+    region: us-central1
+    machine_type: n2-standard-4
+    max_workers: 200
+    autoscaling: THROUGHPUT_BASED
+    # For BYOC, set to your VPC subnet so workers run inside it.
+    network: default
+    subnetwork: ""
+    use_public_ips: false
+
+  lightning:
+    # Only used for dataflow-lightning and dataflow-lightning-sharded.
+    backend: local
+    pd_addr: tidb.byoc.example.com:2379
+    sorted_kv_dir: /data/lightning-sort
+
+  # Sharded strategy: optional collection groups for sequential passes.
+  shard_groups: []
+  # Example:
+  # shard_groups:
+  #   - [events]
+  #   - [users, products, orders]
+  #   - [audit_logs, sessions]
+
+check:
+  # Default sample size for hash-diff validation per collection.
+  sample_size: 1000
+
+sync:
+  enabled: false
+
+  bigquery:
+    # The project containing the firestore-bigquery-export extension's
+    # dataset. Usually the same as source.project_id.
+    project_id: my-gcp-project
+    dataset_id: firestore_export
+
+    # Streaming Dataflow job polling interval.
+    polling_interval_seconds: 30
+
+logging:
+  level: INFO
+  format: json
+  audit_log_path: ./tishift-output/audit.jsonl
+
+metrics:
+  enabled: true
+  port: 9090
