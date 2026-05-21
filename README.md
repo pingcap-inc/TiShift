@@ -16,6 +16,7 @@ TiShift automates the heavy lifting of migrating from legacy databases to TiDB C
 | **Oracle Database** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **SQL Server / MSSQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **Aurora MySQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
+| **Cloud Firestore** | TiDB Cloud (Starter, Essential, Dedicated, BYOC on GCP) | Active |
 
 ## How It Works
 
@@ -88,6 +89,12 @@ cd TiShift
 
 ```
 /aurora-to-tidb
+```
+
+#### Cloud Firestore to TiDB Cloud
+
+```
+/firestore-to-tidb
 ```
 
 #### SQL Server to TiDB Cloud
@@ -295,6 +302,41 @@ python -m tishift.cli load --config tishift.yaml --scan-report ./tishift-reports
 python -m tishift.cli check --config tishift.yaml --schema mydb
 ```
 
+### Cloud Firestore to TiDB Cloud
+
+```bash
+cd firestore-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-firestore.example.yaml tishift-firestore.yaml
+# Edit with your GCP project, Firestore database, GCS staging bucket, and TiDB credentials.
+# Firestore Native mode is required. Datastore mode supported at limited fidelity.
+# Firestore Enterprise with MongoDB-compatibility API is routed to the future mongo-to-tidb skill.
+
+# Verify connectivity and IAM
+tishift-firestore preflight --config tishift-firestore.yaml
+
+# Scan and assess — samples documents, infers schema, enumerates composite indexes
+tishift-firestore scan --config tishift-firestore.yaml --format cli --format json
+tishift-firestore score --config tishift-firestore.yaml \
+    --scan-report tishift-reports/firestore-scan-report.json
+
+# Convert schema (composite-index-driven JSON / hybrid / normalized policy)
+tishift-firestore convert --config tishift-firestore.yaml \
+    --scan-report tishift-reports/firestore-scan-report.json --dry-run
+tishift-firestore convert --config tishift-firestore.yaml \
+    --scan-report tishift-reports/firestore-scan-report.json --apply
+
+# Load data (Dataflow + Beam Firestore IO → GCS NDJSON → TiDB Lightning for BYOC)
+tishift-firestore load --config tishift-firestore.yaml \
+    --scan-report tishift-reports/firestore-scan-report.json --strategy auto
+
+# Validate
+tishift-firestore check --config tishift-firestore.yaml \
+    --scan-report tishift-reports/firestore-scan-report.json
+```
+
 ### Configuration
 
 The CLI uses YAML config files with environment variable support for credentials:
@@ -335,6 +377,9 @@ cd sqlserver-to-tidb && pytest tests -q
 
 # Aurora toolkit
 cd aurora-to-tidb && pytest tests -q
+
+# Firestore toolkit
+cd firestore-to-tidb && pytest tests -q
 ```
 
 ## Project Structure
@@ -425,6 +470,19 @@ TiShift/
 │   │   ├── sync/               CDC via DM, DMS, Changefeeds
 │   │   └── rules/              Compatibility rules, type mapping
 │   └── tests/                  Unit and integration tests
+│
+├── firestore-to-tidb/          Cloud Firestore → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, scoring,
+│   │                           schema-policy engine, BYOC runbook
+│   ├── tishift_firestore/      Python CLI + MCP toolkit
+│   │   ├── core/scan/          Sample-based inference, index enumeration
+│   │   ├── core/convert/       Schema policy engine, template DDL emission
+│   │   ├── core/load/          Apache Beam on Dataflow → GCS NDJSON → Lightning
+│   │   ├── core/check/         Counts, structure, canonical hash diff
+│   │   ├── core/sync/          BigQuery bridge via firestore-bigquery-export
+│   │   └── rules/              Type mapping, compatibility rules, scoring
+│   └── tests/                  Unit and integration tests (Firestore Emulator)
 │
 └── LICENSE                     Apache 2.0
 ```
