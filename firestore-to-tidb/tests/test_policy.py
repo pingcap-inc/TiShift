@@ -69,9 +69,17 @@ def test_hybrid_when_indexes_present():
         convert_cfg=ConvertConfig(),
     )
     assert plan.policy == "hybrid"
+    # Indexed fields are typed
     assert "category_ref" in plan.typed_columns
     assert "price" in plan.typed_columns
-    assert "extra_data" in plan.json_columns
+    # Non-indexed fields collapse into the merged `doc JSON` column,
+    # NOT into individual JSON columns per field. (json_columns is for
+    # user-override-forced individual JSON columns only.)
+    assert plan.merged_json_column is True
+    assert "name" not in plan.json_columns
+    assert "extra_data" not in plan.json_columns
+    assert "name" not in plan.typed_columns
+    assert "extra_data" not in plan.typed_columns
 
 
 def test_polymorphic_in_indexed_path_flagged():

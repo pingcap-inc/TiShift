@@ -27,6 +27,14 @@ class CollectionPolicy:
     policy: PolicyChoice
     rationale: str
     typed_columns: list[str] = field(default_factory=list)
+    # For Hybrid: non-indexed/non-flattened fields collapse into a single
+    # `doc JSON` column (set via merged_json_column=True), NOT into individual
+    # JSON columns per field. The latter is the worst of both worlds — JSON
+    # storage cost per field without the indexability benefit of typed cols.
+    # For JSON-mostly: the full document body lands in `doc`.
+    # `json_columns` here is for the user-override case only (operator
+    # explicitly asked for these specific fields to be their own JSON cols).
+    merged_json_column: bool = False
     json_columns: list[str] = field(default_factory=list)
     flagged_for_review: list[str] = field(default_factory=list)
     geopoint_mapping: dict[str, str] = field(default_factory=dict)
@@ -103,11 +111,13 @@ def decide_policy_for_collection(
     json_cols: list[str] = []
     flagged: list[str] = []
     geo_mapping: dict[str, str] = {}
+    merged_json = False
 
     if policy_choice == "json-mostly":
-        # Only the document ID is a typed col; the rest is one doc JSON column.
+        # Only the document ID is a typed col; the rest collapses into one
+        # merged `doc JSON` column emitted by the DDL emitter.
         typed_cols = ["id"]
-        json_cols = ["doc"]
+        merged_json = True
         # Still surface polymorphic-in-indexed warnings if any (rare for JSON-mostly).
         for f in indexed_fields & polymorphic:
             flagged.append(f"{f} (BLOCKER-4) — polymorphic in indexed path")
@@ -119,36 +129,40 @@ def decide_policy_for_collection(
                 continue  # nested handled separately by the DDL emitter
             if hist.is_polymorphic():
                 flagged.append(f"{path} (BLOCKER-4) — polymorphic; normalized requires typed col")
+                # Polymorphic fields under "normalized" stay as individual named
+                # JSON cols so they can be addressed by the application; the
+                # user explicitly chose normalized despite the polymorphism.
                 json_cols.append(path)
             else:
                 typed_cols.append(path)
 
-    else:  # hybrid
+    else:  # hybrid (the corrected behavior — single merged doc JSON)
         typed_set: set[str] = set()
         # User-specified flatten_columns always go typed
         if override:
             typed_set.update(override.flatten_columns)
 
-        # All composite-indexed fields go typed (unless explicitly overridden to JSON).
+        # All composite-indexed fields go typed (unless explicitly overridden
+        # to be their own named JSON column).
         for f in indexed_fields:
             if override and f in override.json_columns:
                 json_cols.append(f)
             else:
                 typed_set.add(f)
 
-        # Every other top-level field goes JSON unless user said flatten.
+        # Non-indexed, non-flattened fields collapse into the merged `doc JSON`
+        # column. We do NOT append them to json_cols (that would produce one
+        # JSON column per field — the worst of both worlds).
         for path, hist in sorted(histograms.items()):
             if "." in path:
                 continue
             if path in typed_set:
                 typed_cols.append(path)
-                # Flag polymorphic in indexed
                 if hist.is_polymorphic() and path in indexed_fields:
                     flagged.append(f"{path} (BLOCKER-4) — polymorphic in indexed path")
-            elif override and path in override.flatten_columns:
-                typed_cols.append(path)
-            else:
-                json_cols.append(path)
+            # else: lands in the single merged doc JSON via merged_json=True
+
+        merged_json = True
 
     # GeoPoint mapping
     if override:
@@ -159,6 +173,7 @@ def decide_policy_for_collection(
         policy=policy_choice,
         rationale=rationale,
         typed_columns=sorted(set(typed_cols)),
+        merged_json_column=merged_json,
         json_columns=sorted(set(json_cols)),
         flagged_for_review=sorted(flagged),
         geopoint_mapping=geo_mapping,

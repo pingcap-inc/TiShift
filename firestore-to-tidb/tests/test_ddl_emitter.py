@@ -200,3 +200,142 @@ def test_emit_advisor_lists_flags():
     )
     assert "BLOCKER-4" in artifact.advisor_markdown
     assert "Flagged for review" in artifact.advisor_markdown
+
+
+def test_hybrid_emits_single_merged_doc_json():
+    """Regression: non-indexed fields collapse into ONE `doc JSON` column under
+    Hybrid policy. They must NOT each become their own JSON column.
+
+    Caught during the e-commerce migration simulation: the orders table had
+    items / shipping_address / total_cents each landing as `JSON NOT NULL`
+    columns when they should have merged into one `doc` JSON. That pattern
+    forces JSON storage cost per field without the indexability benefit of
+    typed columns — worst of both worlds. The MongoDB variant of this
+    toolkit always emitted the merged column correctly; this test ensures
+    the Firestore variant matches.
+    """
+    histograms = {
+        "country_code": _hist("country_code", ("string", 100), max_observed_string_len=2),
+        "tier": _hist("tier", ("string", 100), max_observed_string_len=16),
+        "created_at": _hist("created_at", ("timestamp", 100)),
+        "email": _hist("email", ("string", 100), max_observed_string_len=128),
+        "display_name": _hist("display_name", ("string", 100)),
+        "age": _hist("age", ("number", 100), numeric_values=[float(i) for i in range(100)]),
+    }
+    plan = SchemaPolicyPlan(collections=[
+        CollectionPolicy(
+            collection_name="users",
+            policy="hybrid",
+            rationale="test",
+            typed_columns=["country_code", "tier", "created_at"],
+            merged_json_column=True,
+            indexed_field_paths={"country_code", "tier", "created_at"},
+        ),
+    ])
+    artifact = emit_ddl(
+        plan=plan,
+        histograms_by_collection={"users": histograms},
+        indexes=[],
+        convert_cfg=ConvertConfig(),
+    )
+    sql = artifact.create_tables
+
+    # Indexed fields are typed columns
+    assert "`country_code` VARCHAR" in sql
+    assert "`tier` VARCHAR" in sql
+    assert "`created_at` DATETIME(6)" in sql
+
+    # The single merged JSON column
+    assert "`doc` JSON" in sql
+
+    # Non-indexed fields must NOT each get their own JSON column —
+    # this is the bug being regressed against.
+    assert "`email` JSON" not in sql
+    assert "`display_name` JSON" not in sql
+    assert "`age` JSON" not in sql
+
+
+def test_hybrid_policy_engine_produces_merged_json():
+    """End-to-end: from decide_policy() through emit_ddl(), Hybrid produces a
+    merged `doc JSON` column rather than per-field JSON columns."""
+    from tishift_firestore.core.convert.policy import decide_policy
+
+    histograms = {
+        "users": {
+            "country_code": _hist("country_code", ("string", 100), max_observed_string_len=2),
+            "tier": _hist("tier", ("string", 100), max_observed_string_len=16),
+            "created_at": _hist("created_at", ("timestamp", 100)),
+            "email": _hist("email", ("string", 100)),
+            "display_name": _hist("display_name", ("string", 100)),
+        },
+    }
+    indexes = [
+        CompositeIndex(
+            collection_or_group="users",
+            scope="COLLECTION",
+            fields=[
+                IndexField(name="country_code", order="ASCENDING"),
+                IndexField(name="tier", order="ASCENDING"),
+                IndexField(name="created_at", order="DESCENDING"),
+            ],
+        ),
+    ]
+    plan = decide_policy(
+        histograms_by_collection=histograms,
+        indexes=indexes,
+        convert_cfg=ConvertConfig(),
+    )
+    users_policy = plan.by_name("users")
+    assert users_policy is not None
+    assert users_policy.policy == "hybrid"
+    assert users_policy.merged_json_column is True
+
+    artifact = emit_ddl(
+        plan=plan,
+        histograms_by_collection=histograms,
+        indexes=indexes,
+        convert_cfg=ConvertConfig(),
+    )
+    sql = artifact.create_tables
+    # Indexed → typed
+    assert "`country_code` VARCHAR" in sql
+    assert "`tier` VARCHAR" in sql
+    assert "`created_at` DATETIME(6)" in sql
+    # Non-indexed → merged JSON, not per-field
+    assert "`doc` JSON" in sql
+    assert "`email` JSON" not in sql
+    assert "`display_name` JSON" not in sql
+
+
+def test_json_mostly_via_policy_engine_emits_doc_json():
+    """JSON-mostly policy still emits exactly one `doc JSON` column even after
+    the merged_json_column refactor — the json-mostly branch wires it the same way."""
+    from tishift_firestore.core.convert.policy import decide_policy
+
+    histograms = {
+        "audit_logs": {
+            "event": _hist("event", ("string", 100)),
+            "payload": _hist("payload", ("map", 100)),
+            "at": _hist("at", ("timestamp", 100)),
+        },
+    }
+    plan = decide_policy(
+        histograms_by_collection=histograms,
+        indexes=[],  # No composite indexes → JSON-mostly
+        convert_cfg=ConvertConfig(),
+    )
+    pol = plan.by_name("audit_logs")
+    assert pol is not None
+    assert pol.policy == "json-mostly"
+
+    artifact = emit_ddl(
+        plan=plan,
+        histograms_by_collection=histograms,
+        indexes=[],
+        convert_cfg=ConvertConfig(),
+    )
+    sql = artifact.create_tables
+    assert "`doc` JSON" in sql
+    # No per-field JSON columns
+    assert "`event` JSON" not in sql
+    assert "`payload` JSON" not in sql

@@ -32,9 +32,9 @@ optional functional indexes; less natural for downstream relational tooling.
 
 ### Hybrid
 
-Typed columns for the fields that appear in composite indexes; a `doc JSON`
-column for everything else. The default policy when a collection has
-composite indexes but most of its fields are not indexed.
+Typed columns for the fields that appear in composite indexes; **one merged
+`doc JSON` column** for everything else. The default policy when a collection
+has composite indexes but most of its fields are not indexed.
 
 Best for: most real-world collections. Preserves the customer's existing
 query patterns (indexed fields are first-class columns) while not forcing
@@ -43,6 +43,31 @@ typed-column engineering on every field.
 Trade-off: writes touch two surfaces (typed cols + JSON). At Firestore's
 size scale this is invisible; at TiDB's, the row size is larger than pure
 normalized.
+
+**Correctness note.** Non-indexed fields collapse into a *single* `doc JSON`
+column, NOT one JSON column per field. The latter is the worst of both
+worlds — JSON storage cost per field without the indexability benefit of
+typed columns. Concretely, a `users` collection with a composite index on
+`(country_code, tier, created_at)` lands like this:
+
+```sql
+CREATE TABLE `users` (
+  `id` VARCHAR(20) NOT NULL,
+  `country_code` VARCHAR(...) NOT NULL,   -- typed: in composite index
+  `tier` VARCHAR(...) NOT NULL,           -- typed: in composite index
+  `created_at` DATETIME(6) NOT NULL,      -- typed: in composite index
+  `doc` JSON,                             -- merged JSON: email, name, age, ...
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB ...
+```
+
+Reading a non-indexed field becomes `JSON_EXTRACT(doc, '$.email')`. For
+frequently-queried JSON paths, add a functional index on a generated column.
+
+The merged-JSON behavior is on by default for Hybrid. To override per
+collection and force specific fields to be their own named JSON columns,
+use `convert.per_collection.<name>.json_columns: [...]` — those fields keep
+their original names instead of merging into `doc`.
 
 ## Decision algorithm
 

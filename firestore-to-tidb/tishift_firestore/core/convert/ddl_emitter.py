@@ -153,12 +153,18 @@ def _emit_create_table(
             if not hist:
                 continue
             columns.extend(_columns_for_field(col_name, hist, policy))
+        # User-forced individual JSON columns (override.json_columns)
         for col_name in policy.json_columns:
-            if col_name == "doc":  # handled above for json-mostly
+            if col_name == "doc":
                 continue
             hist = histograms.get(col_name)
             nullable = hist.is_nullable() if hist else True
             columns.append(ColumnSpec(name=col_name, sql_type="JSON", nullable=nullable))
+        # The Hybrid-merge fix: non-indexed/non-flattened fields collapse into
+        # a single merged `doc JSON` column instead of one JSON column per
+        # field. Driven by policy.merged_json_column set in the policy engine.
+        if policy.merged_json_column and policy.policy == "hybrid":
+            columns.append(ColumnSpec(name="doc", sql_type="JSON", nullable=True))
 
     lines = [c.to_ddl() for c in columns]
     lines.append(f"PRIMARY KEY ({quote_ident('id')})")
