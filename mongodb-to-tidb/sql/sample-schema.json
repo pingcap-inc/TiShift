@@ -1,0 +1,192 @@
+{
+  "_description": "Representative MongoDB collections for tests and demos. Documents use synthetic BSON-type sentinels ({_type: 'ObjectId', value: '...'}) so the fixture is parseable without a live Mongo. Loader code translates these into real BSON when populating the emulator.",
+  "_schema_version": 1,
+  "database": "demo",
+  "collections": {
+    "users": [
+      {
+        "_id": {"_type": "ObjectId", "value": "6479a1c0d3b1234567890abc"},
+        "email": "alice@example.com",
+        "display_name": "Alice",
+        "age": 32,
+        "country_code": "US",
+        "tier": "gold",
+        "location": {"_type": "GeoPoint", "lat": 37.7749, "lng": -122.4194},
+        "avatar": {"_type": "Binary", "subtype": 0, "base64": "iVBORw0KGgo="},
+        "tags": ["beta", "admin"],
+        "created_at": {"_type": "Date", "iso": "2026-01-15T03:14:15.123Z"},
+        "updated_at": {"_type": "Date", "iso": "2026-04-20T11:30:00.000Z"},
+        "preferences": {"theme": "dark", "lang": "en", "tz": "America/Los_Angeles"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "6479a1c0d3b1234567890abd"},
+        "email": "bob@example.com",
+        "display_name": "Bob",
+        "age": 27,
+        "country_code": "UK",
+        "tier": "silver",
+        "location": {"_type": "GeoPoint", "lat": 51.5074, "lng": -0.1278},
+        "tags": [],
+        "created_at": {"_type": "Date", "iso": "2026-02-20T11:00:00.000Z"},
+        "updated_at": {"_type": "Date", "iso": "2026-04-21T09:15:00.000Z"},
+        "preferences": {"theme": "light"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "6479a1c0d3b1234567890abe"},
+        "email": "carol@example.com",
+        "country_code": "FR",
+        "tier": "free",
+        "tags": ["legacy"],
+        "deprecated_legacy_id": "L-19992",
+        "created_at": {"_type": "Date", "iso": "2026-03-01T09:45:00.000Z"}
+      }
+    ],
+    "products": [
+      {
+        "_id": {"_type": "ObjectId", "value": "7479b2c1e4c1234567890bcd"},
+        "sku": "SKU-001",
+        "name": "Widget A",
+        "category_ref": {"_type": "DBRef", "$ref": "categories", "$id": "widgets"},
+        "price": 19.99,
+        "active": true,
+        "stock": 245,
+        "attributes": {"color": "red", "weight_grams": 250, "dimensions": {"w": 5, "h": 3, "d": 1}},
+        "metadata": {"audit": [{"by": "alice", "at": "2026-01-01T00:00:00Z"}]},
+        "created_at": {"_type": "Date", "iso": "2026-01-10T08:00:00.000Z"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "7479b2c1e4c1234567890bce"},
+        "sku": "SKU-002",
+        "name": "Widget B (multi-currency)",
+        "category_ref": {"_type": "DBRef", "$ref": "categories", "$id": "widgets"},
+        "price": {"amount": 24.99, "currency": "USD"},
+        "active": true,
+        "stock": 50,
+        "attributes": {"color": "blue"},
+        "created_at": {"_type": "Date", "iso": "2026-02-15T12:00:00.000Z"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "7479b2c1e4c1234567890bcf"},
+        "sku": "SKU-003",
+        "name": "Gadget",
+        "category_ref": {"_type": "DBRef", "$ref": "categories", "$id": "gadgets"},
+        "price": {"_type": "Decimal128", "value": "49.99999999999"},
+        "active": true,
+        "stock": 120,
+        "attributes": {"color": "green", "weight_grams": 400},
+        "created_at": {"_type": "Date", "iso": "2026-03-05T15:30:00.000Z"}
+      }
+    ],
+    "categories": [
+      {"_id": "widgets", "name": "Widgets", "description": "Things that widget."},
+      {"_id": "gadgets", "name": "Gadgets", "description": "Things that gadget."}
+    ],
+    "orders": [
+      {
+        "_id": {"_type": "ObjectId", "value": "8479c3d2f5d1234567890cde"},
+        "user_ref": {"_type": "DBRef", "$ref": "users", "$id": "6479a1c0d3b1234567890abc"},
+        "items": [
+          {"sku": "SKU-001", "qty": 2, "price": 19.99},
+          {"sku": "SKU-003", "qty": 1, "price": 49.99}
+        ],
+        "total": {"_type": "Decimal128", "value": "89.97"},
+        "status": "shipped",
+        "created_at": {"_type": "Date", "iso": "2026-03-15T14:00:00.000Z"},
+        "notes": "First-time customer. Ship priority."
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "8479c3d2f5d1234567890cdf"},
+        "user_ref": {"_type": "DBRef", "$ref": "users", "$id": "6479a1c0d3b1234567890abd"},
+        "items": [{"sku": "SKU-002", "qty": 1, "price": 24.99}],
+        "total": {"_type": "Decimal128", "value": "24.99"},
+        "status": "pending",
+        "created_at": {"_type": "Date", "iso": "2026-04-10T09:00:00.000Z"}
+      }
+    ],
+    "audit_logs": [
+      {
+        "_id": {"_type": "ObjectId", "value": "9479d4e3a6e1234567890def"},
+        "event_type": "login",
+        "user_ref": "6479a1c0d3b1234567890abc",
+        "ip_address": "192.0.2.1",
+        "user_agent": "Mozilla/5.0",
+        "metadata": {"source": "web", "mfa": true},
+        "at": {"_type": "Date", "iso": "2026-04-01T08:00:00.000Z"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "9479d4e3a6e1234567890df0"},
+        "event_type": "checkout",
+        "user_ref": "6479a1c0d3b1234567890abd",
+        "metadata": {"amount": 24.99, "currency": "USD", "items": 1},
+        "at": {"_type": "Date", "iso": "2026-04-10T09:00:00.000Z"}
+      },
+      {
+        "_id": {"_type": "ObjectId", "value": "9479d4e3a6e1234567890df1"},
+        "ip_address": "10.0.0.4",
+        "user_agent": "Mozilla/5.0",
+        "at": {"_type": "Date", "iso": "2026-04-01T08:30:00.000Z"},
+        "legacy_id": "L-99421"
+      }
+    ]
+  },
+  "indexes": {
+    "users": [
+      {"name": "_id_", "fields": [{"name": "_id", "direction": 1}], "unique": true},
+      {"name": "email_1", "fields": [{"name": "email", "direction": 1}], "unique": true},
+      {"name": "country_tier_created", "fields": [
+        {"name": "country_code", "direction": 1},
+        {"name": "tier", "direction": 1},
+        {"name": "created_at", "direction": -1}
+      ]},
+      {"name": "tags_2dsphere", "fields": [{"name": "location", "direction": "2dsphere"}]}
+    ],
+    "products": [
+      {"name": "_id_", "fields": [{"name": "_id", "direction": 1}], "unique": true},
+      {"name": "sku_1", "fields": [{"name": "sku", "direction": 1}], "unique": true},
+      {"name": "category_active_stock", "fields": [
+        {"name": "category_ref", "direction": 1},
+        {"name": "active", "direction": 1},
+        {"name": "stock", "direction": -1}
+      ]}
+    ],
+    "orders": [
+      {"name": "_id_", "fields": [{"name": "_id", "direction": 1}], "unique": true},
+      {"name": "status_created", "fields": [
+        {"name": "status", "direction": 1},
+        {"name": "created_at", "direction": -1}
+      ]},
+      {"name": "user_ref_1", "fields": [{"name": "user_ref", "direction": 1}]}
+    ],
+    "audit_logs": []
+  },
+  "aggregations": [
+    {
+      "id": "orders.monthly-by-status",
+      "collection": "orders",
+      "pipeline": [
+        {"$match": {"created_at": {"$gte": "2026-01-01T00:00:00Z"}}},
+        {"$group": {"_id": {"month": {"$month": "$created_at"}, "status": "$status"}, "count": {"$sum": 1}}},
+        {"$sort": {"_id.month": 1}}
+      ]
+    },
+    {
+      "id": "users.with-recent-orders",
+      "collection": "users",
+      "pipeline": [
+        {"$lookup": {"from": "orders", "localField": "_id", "foreignField": "user_ref", "as": "orders"}},
+        {"$match": {"orders.created_at": {"$gte": "2026-04-01T00:00:00Z"}}},
+        {"$project": {"email": 1, "order_count": {"$size": "$orders"}}}
+      ]
+    }
+  ],
+  "_notes": [
+    "users.deprecated_legacy_id is sparse (1/3 docs) — should be flagged.",
+    "products.price is polymorphic (Int/Object/Decimal128) AND in composite index — BLOCKER-5 if normalized policy chosen.",
+    "audit_logs is intentionally sparse + polymorphic — should land as JSON-mostly.",
+    "orders.items is Array<Object> — should decompose into orders_items child table.",
+    "categories has String _id (not ObjectId) — type-mapping should produce VARCHAR(N) not VARCHAR(24).",
+    "users.location is 2dsphere-indexed — should trigger WARNING-1.",
+    "orders.notes has text-index candidacy — would trigger WARNING-2 if such an index existed.",
+    "Aggregation pipelines: monthly-by-status (complexity 5), with-recent-orders (complexity 9)."
+  ]
+}

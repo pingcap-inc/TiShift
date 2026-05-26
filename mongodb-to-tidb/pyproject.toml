@@ -1,0 +1,116 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tishift-mongodb"
+version = "0.1.0"
+description = "MongoDB → TiDB migration toolkit"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "PingCAP Partner Solutions Architecture" },
+]
+keywords = ["mongodb", "tidb", "migration", "nosql", "document-database"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+]
+
+# Core dependencies — TiDB-native paths only. No managed-service deps.
+dependencies = [
+    "click>=8.1",
+    "pydantic>=2.6",
+    "PyYAML>=6.0",
+    "Rich>=13.0",
+    "Jinja2>=3.1",
+    "PyMySQL>=1.1",
+    "prometheus-client>=0.20",
+    "pymongo>=4.6",
+    "fsspec>=2024.2",
+    "mcp[cli]>=1.0",
+]
+
+[project.optional-dependencies]
+# Cloud-specific storage backends (pick what you need)
+s3 = ["s3fs>=2024.2"]
+gcs = ["gcsfs>=2024.2"]
+azure = ["adlfs>=2024.2"]
+
+# Adapter integrations (for customers who already operate these services)
+aws-dms = ["boto3>=1.34"]
+datastream = ["google-cloud-bigquery>=3.20", "google-cloud-storage>=2.14", "apache-beam[gcp]>=2.55"]
+debezium = ["confluent-kafka>=2.5"]
+
+# All cloud backends + all adapters
+all = [
+    "s3fs>=2024.2",
+    "gcsfs>=2024.2",
+    "adlfs>=2024.2",
+    "boto3>=1.34",
+    "google-cloud-bigquery>=3.20",
+    "google-cloud-storage>=2.14",
+    "apache-beam[gcp]>=2.55",
+    "confluent-kafka>=2.5",
+]
+
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "pytest-cov>=4.1",
+    "mongomock>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-PyYAML",
+]
+report = [
+    "WeasyPrint>=62",
+]
+
+[project.scripts]
+tishift-mongodb = "tishift_mongodb.cli.main:cli"
+tishift-mongodb-mcp = "tishift_mongodb.mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/pingcap-inc/TiShift"
+Documentation = "https://github.com/pingcap-inc/TiShift/tree/main/mongodb-to-tidb/docs"
+Repository = "https://github.com/pingcap-inc/TiShift"
+
+[tool.setuptools.packages.find]
+include = ["tishift_mongodb*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "A", "C4", "RET", "SIM", "ARG"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "mongomock: uses the mongomock in-memory Mongo fake",
+    "live_mongo: requires a live Mongo Docker container",
+    "live_tidb: requires a reachable TiDB cluster",
+    "live_s3: requires an S3-compatible endpoint (real S3 or MinIO)",
+]

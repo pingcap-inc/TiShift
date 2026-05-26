@@ -1,0 +1,124 @@
+{
+  "_description": "Representative Firestore export for tests and demos. Documents are written in a JSON-shaped representation of Firestore values; loader fixtures translate these into real Firestore types when populating the emulator.",
+  "_schema_version": 1,
+  "collections": {
+    "users": [
+      {
+        "_id": "u-aaaaaaaa1111",
+        "email": "alice@example.com",
+        "age": 32,
+        "location": {"_type": "geopoint", "lat": 37.7749, "lng": -122.4194},
+        "avatar": {"_type": "bytes", "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB"},
+        "preferences": {"theme": "dark", "lang": "en"},
+        "tags": ["beta", "admin"],
+        "created_at": {"_type": "timestamp", "iso": "2026-01-15T03:14:15.123Z"},
+        "updated_at": {"_type": "timestamp", "_sentinel": "SERVER_TIMESTAMP"}
+      },
+      {
+        "_id": "u-bbbbbbbb2222",
+        "email": "bob@example.com",
+        "age": 27,
+        "location": {"_type": "geopoint", "lat": 51.5074, "lng": -0.1278},
+        "preferences": {"theme": "light"},
+        "tags": [],
+        "created_at": {"_type": "timestamp", "iso": "2026-02-20T11:00:00.000Z"},
+        "updated_at": {"_type": "timestamp", "_sentinel": "SERVER_TIMESTAMP"}
+      },
+      {
+        "_id": "u-cccccccc3333",
+        "email": "carol@example.com",
+        "age": null,
+        "location": null,
+        "tags": ["legacy"],
+        "deprecated_legacy_id": "L-19992",
+        "created_at": {"_type": "timestamp", "iso": "2026-03-01T09:45:00.000Z"}
+      }
+    ],
+    "products": [
+      {
+        "_id": "p-zzzzzzzz0001",
+        "sku": "SKU-001",
+        "name": "Widget A",
+        "category_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/categories/widgets"},
+        "price": 19.99,
+        "attributes": {"color": "red", "weight_grams": 250, "dimensions": {"w": 5, "h": 3, "d": 1}},
+        "metadata": {"audit": [{"by": "alice", "at": "2026-01-01T00:00:00Z"}]}
+      },
+      {
+        "_id": "p-zzzzzzzz0002",
+        "sku": "SKU-002",
+        "name": "Widget B (multi-currency)",
+        "category_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/categories/widgets"},
+        "price": {"amount": 24.99, "currency": "USD"},
+        "attributes": {"color": "blue"}
+      },
+      {
+        "_id": "p-zzzzzzzz0003",
+        "sku": "SKU-003",
+        "name": "Gadget",
+        "category_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/categories/gadgets"},
+        "price": 49.99,
+        "attributes": {"color": "green", "weight_grams": 400}
+      }
+    ],
+    "categories": [
+      {"_id": "widgets", "name": "Widgets", "description": "Things that widget."},
+      {"_id": "gadgets", "name": "Gadgets", "description": "Things that gadget."}
+    ],
+    "audit_logs": [
+      {"_id": "log-0001", "event": "login", "user_ref": "u-aaaaaaaa1111", "at": {"_type": "timestamp", "iso": "2026-04-01T08:00:00Z"}},
+      {"_id": "log-0002", "event": "checkout", "user_ref": "u-bbbbbbbb2222", "at": {"_type": "timestamp", "iso": "2026-04-01T08:15:00Z"}, "amount": 99.95},
+      {"_id": "log-0003", "ip_address": "10.0.0.4", "user_agent": "Mozilla/5.0", "at": {"_type": "timestamp", "iso": "2026-04-01T08:30:00Z"}}
+    ],
+    "geo_zones": [
+      {"_id": "z-001", "name": "SF Bay", "center": {"_type": "geopoint", "lat": 37.7, "lng": -122.4}, "radius_km": 50},
+      {"_id": "z-002", "name": "London", "center": {"_type": "geopoint", "lat": 51.5, "lng": -0.1}, "radius_km": 30}
+    ]
+  },
+  "subcollections": {
+    "users/u-aaaaaaaa1111/orders": [
+      {
+        "_id": "o-1111",
+        "product_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/products/p-zzzzzzzz0001"},
+        "items": [
+          {"sku": "SKU-001", "qty": 2, "price": 19.99},
+          {"sku": "SKU-003", "qty": 1, "price": 49.99}
+        ],
+        "total": 89.97,
+        "status": "shipped",
+        "created_at": {"_type": "timestamp", "iso": "2026-03-15T14:00:00Z"}
+      },
+      {
+        "_id": "o-1112",
+        "product_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/products/p-zzzzzzzz0002"},
+        "items": [{"sku": "SKU-002", "qty": 1, "price": 24.99}],
+        "total": 24.99,
+        "status": "pending",
+        "created_at": {"_type": "timestamp", "iso": "2026-04-10T09:00:00Z"}
+      }
+    ],
+    "users/u-bbbbbbbb2222/orders": [
+      {
+        "_id": "o-2221",
+        "product_ref": {"_type": "reference", "path": "projects/sample/databases/(default)/documents/products/p-zzzzzzzz0001"},
+        "items": [{"sku": "SKU-001", "qty": 5, "price": 19.99}],
+        "total": 99.95,
+        "status": "shipped",
+        "created_at": {"_type": "timestamp", "iso": "2026-04-01T08:14:00Z"}
+      }
+    ]
+  },
+  "composite_indexes": [
+    {"collection": "users", "fields": [{"name": "tags", "mode": "ARRAY_CONTAINS"}, {"name": "created_at", "order": "DESC"}], "scope": "COLLECTION"},
+    {"collection": "products", "fields": [{"name": "category_ref", "order": "ASC"}, {"name": "price", "order": "ASC"}], "scope": "COLLECTION"},
+    {"collection": "orders", "fields": [{"name": "status", "order": "ASC"}, {"name": "created_at", "order": "DESC"}], "scope": "COLLECTION_GROUP"}
+  ],
+  "_notes": [
+    "users.deprecated_legacy_id is a sparse field — present in 1/3 docs (33% < 75% threshold), should be flagged.",
+    "products.price is polymorphic — number in 2 docs, map in 1 doc. Appears in a composite index, so this triggers BLOCKER-4.",
+    "audit_logs is intentionally sparse and polymorphic across docs — should land as JSON-mostly.",
+    "users_orders subcollection contains Array<object> (items) which decomposes into users_orders_items child table.",
+    "categories is referenced via DocumentReference from products.category_ref — FK should be created.",
+    "The product_ref in users_orders points to products by full path — FK should be created (target in scope)."
+  ]
+}
