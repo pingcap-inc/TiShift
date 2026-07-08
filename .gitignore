@@ -35,6 +35,17 @@ Thumbs.db
 *.key
 credentials/
 
+# Generated migration configs — contain live hostnames/cluster IDs/usernames.
+# Only the committed *.example.yaml templates should ever be tracked.
+tishift*.yaml
+!tishift*.example.yaml
+
+# Generated scan/convert/load/check run output (may contain real customer
+# schema, table names, or exported data) — never a fixture, always runtime output.
+tishift-reports/
+tishift-load/
+demo-reports/
+
 # Logs
 *.log
 logs/
