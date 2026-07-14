@@ -1,0 +1,64 @@
+source:
+  # MySQL HeatWave DB System endpoint (private VCN IP or FQDN).
+  # DB Systems are not publicly reachable — connect through an SSH tunnel,
+  # OCI Bastion session, or a compute jump host in the same VCN.
+  host: 10.0.1.15
+  port: 3306
+  user: admin
+  password: ${TISHIFT_SOURCE_PASSWORD}
+  database: myapp
+  # TLS is mandatory on HeatWave, not optional. Requires the HeatWave instance
+  # CA certificate (OCI Console -> DB System -> Connect -> download CA cert),
+  # or extract it: openssl s_client -connect <host>:3306 -starttls mysql -showcerts
+  tls: true
+  # ssl_ca: config/heatwave-ca.pem
+  # Optional, informational only for now (not yet echoed by any command) —
+  # document the tunnel host/user here for whoever runs this config.
+  bastion_host: bastion.example.com
+  bastion_user: opc
+  # Before enabling continue-replication sync (Phase 7 / docs/sync-guide.md),
+  # run the binlog precheck (tishift-heatwave scan --continue-replication, or
+  # `SHOW VARIABLES WHERE Variable_name IN
+  # ('log_bin','binlog_format','binlog_row_image','binlog_expire_logs_seconds',
+  # 'binlog_transaction_compression')`): requires log_bin=ON, binlog_format=ROW,
+  # binlog_row_image=FULL, binlog_transaction_compression=OFF, and
+  # binlog_expire_logs_seconds >= 86400 (604800 recommended).
+  # Also confirm on the source:
+  #   SET GLOBAL binlog_row_value_options = '';
+  # HeatWave can default this to PARTIAL_JSON, which DM cannot parse.
+
+target:
+  host: gateway01.us-east-1.prod.aws.tidbcloud.com
+  port: 4000
+  user: root
+  password: ${TISHIFT_TARGET_PASSWORD}
+  database: myapp
+  tls: true
+  # ssl_ca: /etc/ssl/cert.pem   # TiDB Cloud Starter/Essential: ISRG Root X1 (system CA bundle)
+  # TiDB Cloud tier: starter (default), essential, dedicated, or self-hosted
+  # Starter: free up to 25 GiB, import via ticloud CLI, cutover only (no continue replication)
+  # Essential: autoscaling, Changefeeds, DM-based continue replication from HeatWave binlog
+  # Dedicated: full HTAP (TiFlash), Lightning, DM, PCI-DSS, SOC 2
+  tier: starter
+
+# TiDB Cloud settings (required for Starter/Essential ticloud CLI import)
+cloud:
+  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
+  project_id: ${TIDB_CLOUD_PROJECT_ID}
+
+ai:
+  provider: none   # openai or none
+  api_key: ${TISHIFT_AI_API_KEY}
+  model: ""         # e.g., gpt-4o
+
+output:
+  dir: ./tishift-reports
+  formats: [cli, json, md]
+
+logging:
+  level: info
+  file: tishift-heatwave.log
+
+metrics:
+  enabled: false
+  port: 9090

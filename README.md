@@ -17,6 +17,7 @@ TiShift automates the heavy lifting of migrating from legacy databases to TiDB C
 | **SQL Server / MSSQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **Aurora MySQL** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 | **Cloud Firestore** | TiDB Cloud (Starter, Essential, Dedicated, BYOC on GCP) | Active |
+| **MySQL HeatWave** | TiDB Cloud (Starter, Essential, Dedicated) | Active |
 
 ## How It Works
 
@@ -107,6 +108,12 @@ cd TiShift
 
 ```
 /oracle-to-tidb
+```
+
+#### MySQL HeatWave to TiDB Cloud
+
+```
+/heatwave-to-tidb
 ```
 
 The skill will walk you through each phase — connecting to your databases, scanning the source schema, assessing compatibility, converting DDL, loading data, and validating the result. Follow the prompts; no additional setup is required.
@@ -302,6 +309,32 @@ python -m tishift.cli load --config tishift.yaml --scan-report ./tishift-reports
 python -m tishift.cli check --config tishift.yaml --schema mydb
 ```
 
+### MySQL HeatWave to TiDB Cloud
+
+```bash
+cd heatwave-to-tidb
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev]'
+
+cp config/tishift-heatwave.example.yaml tishift-heatwave.yaml
+# Edit with your HeatWave and TiDB credentials.
+# HeatWave DB Systems are VCN-private — connect through an SSH tunnel or
+# OCI Bastion session (ssh -L 3306:<db-private-ip>:3306 opc@<bastion>).
+
+# Scan and assess — detects RAPID offload, Lakehouse tables, AutoML schemas
+tishift-heatwave scan --config tishift-heatwave.yaml --format cli --format json
+
+# Convert schema (comments out SECONDARY_ENGINE/CLUSTERING BY clauses as
+# TISHIFT-REMOVED markers, inlines TiFlash replica DDL after each RAPID table)
+tishift-heatwave convert --ddl-file schema.sql --tier dedicated --dry-run
+
+# Load and check are not automated yet — both commands print a pointer to
+# the manual runbook and exit non-zero; follow docs/load-guide.md and
+# docs/check-guide.md (or the AI skill) by hand until they land.
+tishift-heatwave load --config tishift-heatwave.yaml --strategy auto
+tishift-heatwave check --config tishift-heatwave.yaml
+```
+
 ### Cloud Firestore to TiDB Cloud
 
 ```bash
@@ -380,6 +413,9 @@ cd aurora-to-tidb && pytest tests -q
 
 # Firestore toolkit
 cd firestore-to-tidb && pytest tests -q
+
+# HeatWave toolkit
+cd heatwave-to-tidb && pytest tests -q
 ```
 
 ## Project Structure
@@ -483,6 +519,19 @@ TiShift/
 │   │   ├── core/sync/          BigQuery bridge via firestore-bigquery-export
 │   │   └── rules/              Type mapping, compatibility rules, scoring
 │   └── tests/                  Unit and integration tests (Firestore Emulator)
+│
+├── heatwave-to-tidb/           MySQL HeatWave → TiDB Cloud migration
+│   ├── SKILL.md                AI skill (interactive migration guide)
+│   ├── references/             Type mappings, compatibility rules, load
+│   │                           strategies (RAPID → TiFlash mapping), scoring
+│   ├── tishift_heatwave/       Python CLI toolkit
+│   │   ├── core/scan/          Schema collectors, HeatWave/RAPID/Lakehouse detection
+│   │   ├── core/convert/       DDL transform, TiFlash emission, code stubs
+│   │   ├── core/load/          Dumpling, ticloud import, direct, Lightning
+│   │   ├── core/check/         Row count, column, checksum validation
+│   │   ├── core/sync/          Continue replication via TiDB DM (binlog replication)
+│   │   └── rules/              Type mapping, compatibility rules, scoring
+│   └── tests/                  Unit tests
 │
 └── LICENSE                     Apache 2.0
 ```
