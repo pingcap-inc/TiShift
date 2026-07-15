@@ -25,7 +25,7 @@ class TestHwDdl1SecondaryEngine:
         assert table == "orders"
         assert [f.rule_id for f in findings] == ["HW-DDL-1"]
         assert findings[0].action_taken == "commented_out"
-        assert findings[0].risk == "blocker"
+        assert findings[0].risk == "info"
 
     def test_quoted_lowercase_variant(self):
         stmt = 'CREATE TABLE t (id INT) secondary_engine = "RAPID";'

@@ -11,7 +11,7 @@ from tishift_heatwave.models import DDLCleanupResult
 from tishift_heatwave.rules.ddl_cleanup import ALL_RULES
 
 _RISK_BADGE = {
-    "blocker": "🔴 blocker",
+    "info": "🔵 info",
     "assess": "🟠 needs assessment",
     "harmless": "🟢 harmless",
 }
@@ -60,10 +60,14 @@ def render_markdown(report: dict) -> str:
         "",
         "## Rule summary",
         "",
-        "| Rule | Syntax | Risk | Auto-cleanable | Hits |",
-        "|---|---|---|---|---|",
     ]
-    for rule_id, s in report["summary"].items():
+    # Rules with zero hits are omitted while any rule matched; when nothing
+    # matched at all, every rule is shown (0 hits) as evidence of what was
+    # checked. The JSON report always keeps the full rule set.
+    hit_rules = {rid: s for rid, s in report["summary"].items() if s["count"]}
+    display_rules = hit_rules or report["summary"]
+    lines += ["| Rule | Syntax | Risk | Auto-cleanable | Hits |", "|---|---|---|---|---|"]
+    for rule_id, s in display_rules.items():
         lines.append(
             f"| {rule_id} | {s['description']} | {_RISK_BADGE[s['risk']]} "
             f"| {_AUTO_BADGE[s['auto_cleanable']]} | {s['count']} |"

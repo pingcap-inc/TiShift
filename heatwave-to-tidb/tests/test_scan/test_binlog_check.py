@@ -11,6 +11,7 @@ ALL_GOOD = {
     "binlog_expire_logs_seconds": "604800",
     "expire_logs_days": "0",
     "binlog_transaction_compression": "OFF",
+    "binlog_row_value_options": "",
 }
 
 
@@ -24,7 +25,7 @@ class TestQuery:
             "SHOW VARIABLES WHERE Variable_name IN "
             "('log_bin','server_id','binlog_format','binlog_row_image',"
             "'binlog_expire_logs_seconds','expire_logs_days',"
-            "'binlog_transaction_compression')"
+            "'binlog_transaction_compression','binlog_row_value_options')"
         )
 
 
@@ -34,9 +35,9 @@ class TestAllGood:
         assert result.continue_replication_ready is True
         assert all(c.status in ("pass", "info") for c in result.checks)
 
-    def test_seven_checks_returned(self):
+    def test_eight_checks_returned(self):
         result = evaluate_binlog_config(ALL_GOOD)
-        assert len(result.checks) == 7  # 5 gated + server_id + expire_logs_days
+        assert len(result.checks) == 8  # 6 gated + server_id + expire_logs_days
 
 
 class TestLogBin:
@@ -121,6 +122,25 @@ class TestBinlogTransactionCompression:
         assert result.continue_replication_ready is False
 
 
+class TestBinlogRowValueOptions:
+    def test_partial_json_fails_and_blocks(self):
+        variables = {**ALL_GOOD, "binlog_row_value_options": "PARTIAL_JSON"}
+        result = evaluate_binlog_config(variables)
+        check = by_variable(result, "binlog_row_value_options")
+        assert check.status == "fail"
+        assert check.rule_id == "HW-WARNING-5"
+        assert result.continue_replication_ready is False
+
+    def test_empty_passes(self):
+        result = evaluate_binlog_config(ALL_GOOD)
+        assert by_variable(result, "binlog_row_value_options").status == "pass"
+
+    def test_missing_fails(self):
+        variables = {k: v for k, v in ALL_GOOD.items() if k != "binlog_row_value_options"}
+        result = evaluate_binlog_config(variables)
+        assert by_variable(result, "binlog_row_value_options").status == "fail"
+
+
 class TestInformationalVariables:
     def test_server_id_zero_warns_but_does_not_block_cdc(self):
         variables = {**ALL_GOOD, "server_id": "0"}
@@ -153,12 +173,14 @@ class TestMultipleFailures:
             "binlog_expire_logs_seconds": "0",
             "expire_logs_days": "0",
             "binlog_transaction_compression": "ON",
+            "binlog_row_value_options": "PARTIAL_JSON",
         }
         result = evaluate_binlog_config(variables)
         assert result.continue_replication_ready is False
         failed_rule_ids = {c.rule_id for c in result.checks if c.status == "fail"}
         assert failed_rule_ids == {
             "HW-WARNING-4",
+            "HW-WARNING-5",
             "HW-WARNING-6",
             "HW-WARNING-7",
             "HW-WARNING-8",

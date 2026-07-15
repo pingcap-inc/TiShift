@@ -55,7 +55,7 @@ The non-HW rules are sourced from
 | HW-WARNING-8 | `binlog_row_image != 'FULL'` and continue replication planned | Partial row images are unsafe for conflict resolution | Set `binlog_row_image = FULL` before starting sync |
 | HW-WARNING-9 | `binlog_transaction_compression != 'OFF'` and continue replication planned | DM does not support transaction compression | `SET GLOBAL binlog_transaction_compression = 'OFF';` before starting sync |
 
-Checked together via one `SHOW VARIABLES` query (`tishift_heatwave/rules/binlog_check.py`); `server_id` and `expire_logs_days` are collected by the same query but reported informationally only (no hard required value) — `server_id = 0` disables binary logging entirely, and `expire_logs_days` is the legacy pre-8.0 retention setting superseded by `binlog_expire_logs_seconds`.
+HW-WARNING-4..9 are checked together via one `SHOW VARIABLES` query (`tishift_heatwave/rules/binlog_check.py` — including `binlog_row_value_options` for HW-WARNING-5); `server_id` and `expire_logs_days` are collected by the same query but reported informationally only (no hard required value) — `server_id = 0` disables binary logging entirely, and `expire_logs_days` is the legacy pre-8.0 retention setting superseded by `binlog_expire_logs_seconds`.
 
 ## DDL cleanup rules (convert phase)
 
@@ -67,8 +67,8 @@ cleaned clauses become `/* TISHIFT-REMOVED [rule-id]: <original> */` comments
 
 | ID | Syntax | Risk | Handling | Auto-cleanable |
 |----|--------|------|----------|----------------|
-| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔴 blocker | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the CREATE TABLE (HW-WARNING-1 mapping) | ✅ yes |
-| HW-DDL-2 | `SECONDARY_LOAD=...` option, `ALTER ... SECONDARY_LOAD/UNLOAD` statements | 🔴 blocker | Comment out (statements become `--` line comments) | ✅ yes |
+| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔵 info | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the CREATE TABLE (HW-WARNING-1 mapping). Info, not a blocker: TiFlash fully replaces the RAPID offload | ✅ yes |
+| HW-DDL-2 | `SECONDARY_LOAD=...` option, `ALTER ... SECONDARY_LOAD/UNLOAD` statements | 🔵 info | Comment out (statements become `--` line comments). Info, not a blocker: TiFlash replication is automatic once the replica is set — no load step exists to port | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | Comment out + `TISHIFT-REVIEW` alternative suggestion; goes on the manual-review checklist | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | Keep as-is; reported as informational | ❌ not needed |
 

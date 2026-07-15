@@ -1,8 +1,10 @@
-"""Load phase — data transfer strategies.
+"""Load phase — intentionally not automated.
 
-Export uses Dumpling over the MySQL protocol (through an SSH tunnel or jump
-host, since HeatWave DB Systems are VCN-private). Import depends on the
-target tier: ticloud serverless import (Starter), direct load (Essential),
-TiDB Lightning (Dedicated). MySQL Shell dumpSchemas to Object Storage is
-documented as an alternative export path in references/load-strategies.md.
+Data loading is deliberately excluded from this tool: it is a high-stakes
+step the user must perform independently. The manual path is documented in
+docs/load-guide.md and references/load-strategies.md — Dumpling export over
+the MySQL protocol (directly against a public TLS endpoint, or through an
+SSH tunnel / jump host for VCN-private DB Systems), then tier-appropriate
+import: ticloud serverless import (Starter), direct load (Essential),
+TiDB Lightning (Dedicated).
 """

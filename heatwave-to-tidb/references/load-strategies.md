@@ -1,10 +1,16 @@
 # Load Strategies — MySQL HeatWave → TiDB
 
-HeatWave DB Systems sit in a private VCN subnet with no public endpoint, so every
-strategy starts by establishing a network path: an SSH tunnel through an OCI
-Bastion session, a compute jump host in the same VCN, or a site-to-site VPN.
-AWS DMS is not applicable to OCI-hosted sources; export always runs over the
-MySQL protocol.
+**The load phase is intentionally not automated** — it is a high-stakes step
+that must be executed independently by the user; the CLI (`tishift-heatwave
+load`) and the AI skill both refuse to run it. The strategies below are the
+manual playbook.
+
+Every strategy starts by establishing a network path. DB Systems with public
+accessibility enabled are reached directly over TLS (restricted to allowed IP
+ranges); VCN-private DB Systems need an SSH tunnel through an OCI Bastion
+session, a compute jump host in the same VCN, or a site-to-site VPN. AWS DMS
+is not applicable to OCI-hosted sources; export always runs over the MySQL
+protocol.
 
 ## Decision matrix
 
