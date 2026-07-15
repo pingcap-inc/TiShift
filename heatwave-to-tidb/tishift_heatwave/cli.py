@@ -203,7 +203,11 @@ def convert(
         click.echo(f"Wrote {md_path}")
 
     click.echo("")
-    for rule_id, s in report["summary"].items():
+    # Zero-hit rules are hidden while any rule matched; if nothing matched,
+    # all rules are listed (0 hits) so the output shows what was checked.
+    summary = report["summary"]
+    display = {rid: s for rid, s in summary.items() if s["count"]} or summary
+    for rule_id, s in display.items():
         click.echo(f"{rule_id}: {s['count']} hit(s) — {s['description']}")
     click.echo(f"RAPID tables: {len(result.rapid_tables)}; TiFlash statements emitted: {len(result.tiflash_statements)}")
     review_count = sum(1 for f in result.findings if f.risk == "assess")
@@ -233,12 +237,18 @@ def _not_implemented(command: str, guide: str) -> None:
     help="Load strategy: auto, direct, ticloud, lightning.",
 )
 def load(config: str, strategy: str) -> None:
-    """Load data from HeatWave to TiDB (Dumpling export over MySQL protocol).
+    """Load data from HeatWave to TiDB — intentionally disabled.
 
-    Not implemented yet — docs/load-guide.md covers the manual path (Dumpling
-    export, then tier-appropriate import).
+    Data loading is deliberately excluded from this tool: it is a high-stakes
+    step that must be performed independently by the user. docs/load-guide.md
+    covers the manual path (Dumpling export, then tier-appropriate import).
     """
-    _not_implemented("load", "docs/load-guide.md")
+    click.echo(
+        "tishift-heatwave load is intentionally disabled — data loading is a "
+        "high-stakes step this tool does not handle. Complete it independently "
+        "by following docs/load-guide.md."
+    )
+    raise SystemExit(2)
 
 
 @main.command()

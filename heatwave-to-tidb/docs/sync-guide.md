@@ -27,7 +27,8 @@ Run once against the source:
 ```sql
 SHOW VARIABLES WHERE Variable_name IN
 ('log_bin','server_id','binlog_format','binlog_row_image',
-'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression');
+'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression',
+'binlog_row_value_options');
 ```
 
 | Configuration | Required value | Why |
@@ -37,6 +38,7 @@ SHOW VARIABLES WHERE Variable_name IN
 | `binlog_row_image` | FULL | Includes all column values in events for safe conflict resolution |
 | `binlog_expire_logs_seconds` | ≥ 86400 (1 day, hard minimum), 604800 (7 days, recommended) | Ensures DM can access consecutive logs during migration |
 | `binlog_transaction_compression` | OFF | DM does not support transaction compression |
+| `binlog_row_value_options` | `''` (empty, not PARTIAL_JSON) | DM cannot parse partial-JSON binlog rows — silent replication corruption on JSON columns. Clear with `SET GLOBAL binlog_row_value_options = '';` (invalidates previously captured binlog positions) |
 
 `server_id` and `expire_logs_days` are returned by the same query but have no
 required value: confirm `server_id` is non-zero (0 silently disables binary
@@ -58,6 +60,16 @@ HW-WARNING-4, HW-WARNING-6..9), collector in
   SET GLOBAL binlog_row_value_options = '';
   SELECT @@binlog_row_value_options;  -- must return empty
   ```
+  **This frequently fails on OCI-managed HeatWave** — even migration accounts
+  with broad DDL/DML grants typically lack `SUPER`/`SYSTEM_VARIABLES_ADMIN`,
+  so the `SET GLOBAL` above (and the equivalent for
+  `binlog_expire_logs_seconds`) can return `ERROR 1227 (42000): Access
+  denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN
+  privilege(s)`. When that happens, these are DB System configuration
+  parameters, not SQL-settable from a client connection — fix them via **OCI
+  Console → DB System → Configuration** instead, then re-run the query above
+  (or `tishift-heatwave scan --continue-replication`) to confirm the change
+  took effect.
 - Migration user holds `REPLICATION SLAVE, REPLICATION CLIENT` plus `SELECT`
   on each business schema (see below)
 - Source TLS is mandatory — DM's connection to HeatWave requires the instance
@@ -167,6 +179,36 @@ block-allow-list:
 Selecting "All Objects" instead of an explicit list either fails the task
 outright on these schemas or pulls in objects that have no place on the target.
 
+**This scoping is database-level only.** `do-dbs`/`ignore-dbs` cannot exclude
+a single table within an in-scope database. If the convert phase deliberately
+left a table out of migration scope (e.g. a smoke-test table), DM will still
+replicate it alongside everything else in that database once the task
+starts, auto-creating it on the target with TiDB-native DDL. Usually harmless
+if the table is empty or irrelevant, but it's schema drift the tool didn't
+originate — `tishift-heatwave check` (or a manual diff) won't catch it unless
+you compare the **full** table list on both sides, not just the tables that
+were actually converted, once after the DM task starts syncing.
+
+**DM task creation is console-only for Essential/Dedicated — there is no CLI
+path.** The `ticloud` CLI only manages Serverless clusters
+(`ticloud serverless ...`); it has no Essential/Dedicated DM task commands.
+Everything in this section produces values to paste into the console's
+task-creation form, not something scriptable end-to-end.
+
+## Validating a DM task before trusting it for cutover (optional)
+
+Once the task is running and shows lag approaching zero, don't take that as
+sufficient proof it's replicating correctly — verify with real data moving
+through it. Insert a small batch of clearly-tagged synthetic rows into the
+source in FK-safe order (parents before children — e.g. reference/lookup
+tables, then top-level entities, then their dependents), using a prefix like
+`TISHIFT_TEST_` on name columns and `TT-*` on unique codes so they're
+trivially identifiable. Then re-run the row-count and checksum queries from
+`tishift-heatwave check` (or `docs/check-guide.md`) on both sides — matching
+row counts alone isn't sufficient proof of correct replication, checksums
+confirm content, not just totals. Delete the tagged rows from both sides once
+satisfied; never leave synthetic data in place through a real cutover.
+
 ## Foreign keys: precheck warnings are expected
 
 TiDB Cloud DM's precheck reports FK-related warnings against HeatWave
@@ -215,6 +257,14 @@ nothing further to run from this CLI for the sync itself.
 4. Repoint the application to TiDB
 5. Keep HeatWave read-only for the agreed rollback window
 6. Stop/remove the DM task in the console once cutover is confirmed and the rollback window has passed
+
+**Executing this is a decision for the user (or their TiDB account team), not
+this tool or the AI skill.** The steps above are reference, not something to
+run or walk through live — the skill's job ends at a created, verified,
+healthy DM task (grants confirmed, valid-indexes precheck passed, FK
+checklist confirmed, sync spot-checked per "Validating a DM task" above).
+Same posture as the load phase: high-stakes, deliberately left to the user
+to perform and confirm independently.
 
 ## Preflight checklist (before creating the DM task in the console)
 

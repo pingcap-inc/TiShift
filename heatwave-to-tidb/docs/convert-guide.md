@@ -14,8 +14,8 @@ comments so the original text stays auditable in the output:
 
 | Rule | Syntax | Risk | Handling | Auto |
 |---|---|---|---|---|
-| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔴 blocker | `/* TISHIFT-REMOVED ... */` + TiFlash replica emitted | ✅ yes |
-| HW-DDL-2 | `SECONDARY_LOAD=...` (option or `ALTER ... SECONDARY_LOAD` statement) | 🔴 blocker | commented out in place / whole statement to `--` line comment | ✅ yes |
+| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔵 info | `/* TISHIFT-REMOVED ... */` + TiFlash replica emitted (TiFlash fully replaces the RAPID offload) | ✅ yes |
+| HW-DDL-2 | `SECONDARY_LOAD=...` (option or `ALTER ... SECONDARY_LOAD` statement) | 🔵 info | commented out in place / whole statement to `--` line comment (TiFlash replication is automatic) | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | commented out + `/* TISHIFT-REVIEW ... */` suggestion; listed in the manual-review section | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | kept as-is, reported only | ❌ not needed |
 
@@ -42,6 +42,11 @@ after the load window.
 
 - `converted-schema.sql` — cleaned DDL with TISHIFT-REMOVED comments and inline TiFlash statements
 - `ddl-cleanup-report.json` / `ddl-cleanup-report.md` — per-table findings, manual-review checklist, parse errors
+
+Display rule for the rule-summary table (Markdown report and CLI output):
+rules with zero hits are hidden while at least one rule matched; when nothing
+matched at all, every rule is shown with 0 hits as evidence of what was
+checked. The JSON report always contains the full rule set.
 
 ## Planned (not yet implemented)
 

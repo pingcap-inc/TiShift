@@ -2,8 +2,8 @@
 
 Single source of truth for the SHOW VARIABLES check that decides whether a
 HeatWave source is ready for TiDB DM continue replication (Phase 7 / docs/sync-guide.md).
-Kept in lockstep with references/compatibility-rules.md (HW-WARNING-4,
-HW-WARNING-6..9) and the required-value table in docs/sync-guide.md.
+Kept in lockstep with references/compatibility-rules.md (HW-WARNING-4..9)
+and the required-value table in docs/sync-guide.md.
 
 This precheck only gates continue replication (Phase 7 sync) — cutover-only migrations do not
 need a passing binlog configuration.
@@ -18,7 +18,7 @@ QUERY = (
     "SHOW VARIABLES WHERE Variable_name IN "
     "('log_bin','server_id','binlog_format','binlog_row_image',"
     "'binlog_expire_logs_seconds','expire_logs_days',"
-    "'binlog_transaction_compression')"
+    "'binlog_transaction_compression','binlog_row_value_options')"
 )
 
 
@@ -36,6 +36,13 @@ class BinlogRule:
 def _equals(expected: str) -> Callable[[str | None], bool]:
     def check(value: str | None) -> bool:
         return value is not None and value.strip().upper() == expected.upper()
+
+    return check
+
+
+def _empty() -> Callable[[str | None], bool]:
+    def check(value: str | None) -> bool:
+        return value is not None and value.strip() == ""
 
     return check
 
@@ -89,6 +96,17 @@ REQUIRED_RULES: list[BinlogRule] = [
         required="OFF",
         why="DM does not support transaction compression",
         check=_equals("OFF"),
+    ),
+    BinlogRule(
+        variable="binlog_row_value_options",
+        rule_id="HW-WARNING-5",
+        required="'' (empty, not PARTIAL_JSON)",
+        why=(
+            "DM cannot parse binlog rows written under partial-JSON mode — "
+            "PARTIAL_JSON causes silent replication corruption on JSON columns, "
+            "not a clean failure"
+        ),
+        check=_empty(),
     ),
 ]
 

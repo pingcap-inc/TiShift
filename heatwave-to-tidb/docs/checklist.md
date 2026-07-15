@@ -10,9 +10,10 @@ links back to its source of truth (`references/*.md`, `SKILL.md`, the other
 
 ## 1. Connectivity & environment
 
-- [ ] **Network path confirmed.** HeatWave DB Systems have no public endpoint —
-  reach them via SSH tunnel through an OCI Bastion session, a compute jump
-  host in the same VCN, or site-to-site VPN/FastConnect.
+- [ ] **Network path confirmed.** DB Systems with public accessibility enabled
+  are reached directly over TLS (client IP must be in the allowed ranges);
+  VCN-private DB Systems need an SSH tunnel through an OCI Bastion session, a
+  compute jump host in the same VCN, or site-to-site VPN/FastConnect.
   ```bash
   ssh -f -N -L 3306:<db-system-private-ip>:3306 opc@<bastion-host>
   ```
@@ -85,8 +86,8 @@ with sqlglot to confirm the cleanup left valid syntax.
 
 | ID | Syntax | Risk | Handling | Auto-cleanable |
 |----|--------|------|----------|----------------|
-| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔴 blocker | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the `CREATE TABLE` | ✅ yes |
-| HW-DDL-2 | `SECONDARY_LOAD=...` option / `ALTER ... SECONDARY_LOAD`/`SECONDARY_UNLOAD` statements | 🔴 blocker | Comment out (statements → `--` line comments) | ✅ yes |
+| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔵 info | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the `CREATE TABLE` — TiFlash fully replaces the RAPID offload | ✅ yes |
+| HW-DDL-2 | `SECONDARY_LOAD=...` option / `ALTER ... SECONDARY_LOAD`/`SECONDARY_UNLOAD` statements | 🔵 info | Comment out (statements → `--` line comments) — TiFlash replication is automatic once the replica is set | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | Comment out + `TISHIFT-REVIEW` suggestion (secondary index, or clustered PK if columns are a PK prefix); goes on the manual-review checklist | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | Keep as-is; reported only | ❌ not needed |
 
@@ -118,8 +119,9 @@ Full detail: `references/type-mapping.md`.
 
 - **Binlog / continue-replication readiness precheck** (implemented + tested, §10.1): `log_bin`,
   `binlog_format`, `binlog_row_image`, `binlog_expire_logs_seconds`,
-  `binlog_transaction_compression`, plus informational `server_id`/`expire_logs_days`
-- Other server config: `binlog_row_value_options`, `gtid_mode`, charset/collation,
+  `binlog_transaction_compression`, `binlog_row_value_options` (must be empty,
+  not PARTIAL_JSON — HW-WARNING-5), plus informational `server_id`/`expire_logs_days`
+- Other server config: `gtid_mode`, charset/collation,
   `sql_mode`, `lower_case_table_names` — TiDB Cloud only supports value `2` (WARNING-8 /
   BLOCKER-9 on an actual name collision)
 - RAPID cluster attached? (`performance_schema.rpd_nodes`); which tables are offloaded
@@ -146,11 +148,28 @@ The scan is read-only — source session is `TRANSACTION READ ONLY`. Full detail
   informational comment.
 - Code stubs for stored procedures/triggers/events/JS routines are generated
   but require manual porting — not a drop-in replacement.
+- **Extract DDL with `--raw`.** `mysql ... -e "SHOW CREATE TABLE $DB.<table>\G"`
+  needs `--raw` — without it, the client's batch-mode output escapes newlines
+  inside the `Create Table` field as literal `\n`, producing a single-line,
+  unusable DDL string.
+- **Applying the converted file needs `SET FOREIGN_KEY_CHECKS=0`.** Extracting
+  each table's DDL independently (one `SHOW CREATE TABLE` per table) doesn't
+  preserve FK dependency order. Applying the concatenated file straight
+  through can fail partway with `ERROR 1824: Failed to open the referenced
+  table '<parent>'` if a child table's `CREATE TABLE` lands before its
+  parent's. Wrap the apply: `SET FOREIGN_KEY_CHECKS=0; SOURCE
+  converted-schema.sql; SET FOREIGN_KEY_CHECKS=1;` rather than hand-reordering
+  the file. If a prior attempt partially applied before failing, drop the
+  tables it did create before re-applying.
 
 Full detail: `docs/convert-guide.md`, `SKILL.md` Phase 4.
 
 ## 8. Load phase — attention tips
 
+- **The load phase is intentionally not handled by this tool.** It is a
+  high-stakes step that must be completed independently by the user; the
+  skill and the `tishift-heatwave load` command both refuse to run it. The
+  tips below apply to the manual execution.
 - AWS DMS does not apply (OCI-hosted source) — export always runs Dumpling
   over the MySQL protocol through the tunnel/bastion.
 - `FLUSH TABLES WITH READ LOCK` is **restricted on HeatWave** — Dumpling falls
@@ -192,7 +211,8 @@ and tested (`core/scan/analyzers/binlog_check.py`, `tests/test_scan/`):
 ```sql
 SHOW VARIABLES WHERE Variable_name IN
 ('log_bin','server_id','binlog_format','binlog_row_image',
-'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression');
+'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression',
+'binlog_row_value_options');
 ```
 
 | Configuration | Required value | Why |
@@ -202,6 +222,7 @@ SHOW VARIABLES WHERE Variable_name IN
 | `binlog_row_image` | FULL | Includes all column values in events for safe conflict resolution |
 | `binlog_expire_logs_seconds` | ≥ 86400 (1 day, hard minimum), 604800 (7 days, recommended) | Ensures DM can access consecutive logs during migration |
 | `binlog_transaction_compression` | OFF | DM does not support transaction compression |
+| `binlog_row_value_options` | `''` (empty, not PARTIAL_JSON) | DM cannot parse partial-JSON binlog rows — silent replication corruption on JSON columns. Clear with `SET GLOBAL binlog_row_value_options = '';` (invalidates previously captured binlog positions) |
 
 `server_id` and `expire_logs_days` are collected by the same query but are
 informational only — `server_id = 0` disables binary logging entirely
@@ -219,6 +240,16 @@ pre-8.0 setting superseded by `binlog_expire_logs_seconds`.
   Clearing it invalidates any binlog position captured before the change —
   run this before creating the DM task.
 - [ ] Source TLS configured with the HeatWave CA certificate
+
+**Attention — `SET GLOBAL` frequently fails on OCI-managed HeatWave.** Even
+migration accounts with broad DDL/DML grants typically lack
+`SUPER`/`SYSTEM_VARIABLES_ADMIN`, so both the `binlog_expire_logs_seconds` and
+`binlog_row_value_options` fixes above can return `ERROR 1227 (42000): Access
+denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN
+privilege(s)`. When that happens, these are DB System configuration
+parameters, not SQL-settable from a client connection — fix them via **OCI
+Console → DB System → Configuration** instead, then re-run this precheck (or
+`scan --continue-replication`) to confirm the change took effect.
 
 ### 10.2 Migration user privileges
 
@@ -305,6 +336,32 @@ block-allow-list:
 Selecting "All Objects" either fails the task outright on these schemas or
 pulls in objects with no place on the target.
 
+**Attention — this scoping is database-level only.** `do-dbs`/`ignore-dbs`
+cannot exclude a single table within an in-scope database. If the convert
+phase deliberately left a table out of migration scope (e.g. a smoke-test
+table), DM will still replicate it alongside everything else in that
+database once the task starts, auto-creating it on the target with
+TiDB-native DDL. Usually harmless if the table is empty or irrelevant, but
+it's schema drift the tool didn't originate, and the check phase (§9) won't
+catch it unless you diff the **full** table list on both sides — not just
+the tables that were converted — once after the DM task starts syncing.
+
+**Attention — DM task creation is TiDB Cloud console-only for
+Essential/Dedicated.** The `ticloud` CLI only manages Serverless clusters
+(`ticloud serverless ...`); it has no Essential/Dedicated DM task commands.
+There is no way to script §10.2–10.4 — the grants and block-allow-list above
+are values to paste into the console's task-creation form.
+
+**Optional — validate the DM task before trusting it for cutover.** Once the
+task is running, insert a small batch of clearly-tagged synthetic rows into
+the source in FK-safe order (parents before children), using a prefix like
+`TISHIFT_TEST_` on name columns and `TT-*` on unique codes so they're
+trivially identifiable. Re-run the check-phase row-count and checksum
+queries (§9) to confirm the DM task actually replicated them correctly —
+matching row counts alone isn't sufficient proof; checksums confirm content,
+not just totals. Delete the tagged rows from both sides once satisfied;
+never leave synthetic data in place through a real cutover.
+
 ### 10.5 FK precheck warnings are expected, not blocking
 
 TiDB Cloud DM's precheck reports FK-related warnings against HeatWave
@@ -340,6 +397,13 @@ Full detail: `docs/sync-guide.md`, `SKILL.md` Phase 7.
 - [ ] FK Pre-upgrade Checklist items all checked (§10.5)
 - [ ] PingCAP notified of the cutover window (§10.6)
 - [ ] Rollback window agreed; HeatWave kept read-only for that window
+
+**Executing cutover is a decision for the user (or their TiDB account team),
+not this tool.** This checklist is a reference, not something the AI skill
+should walk through live or execute — its job ends at a created, verified,
+healthy DM task (grants confirmed, valid-indexes precheck passed, FK
+checklist confirmed, sync spot-checked per §10.4). Same posture as the load
+phase (§8): high-stakes, deliberately left to the user.
 
 ---
 

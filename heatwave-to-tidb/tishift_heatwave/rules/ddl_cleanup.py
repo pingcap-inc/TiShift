@@ -20,7 +20,7 @@ from dataclasses import dataclass
 class CleanupRule:
     rule_id: str
     description: str
-    risk: str  # blocker | assess | harmless
+    risk: str  # info | assess | harmless
     action_taken: str  # commented_out | commented_out_with_suggestion | kept
     auto_cleanable: str  # yes | partial | no
     pattern: re.Pattern
@@ -37,16 +37,16 @@ _VALUE = r"(?:\"[^\"]*\"|'[^']*'|`[^`]*`|\w+)"
 CLAUSE_RULES: list[CleanupRule] = [
     CleanupRule(
         rule_id="HW-DDL-1",
-        description="SECONDARY_ENGINE table option (RAPID analytics offload)",
-        risk="blocker",
+        description="SECONDARY_ENGINE table option (RAPID analytics offload — replaced by TiFlash)",
+        risk="info",
         action_taken="commented_out",
         auto_cleanable="yes",
         pattern=re.compile(rf"(?:,\s*)?\bSECONDARY_ENGINE\s*(?:=\s*)?{_VALUE}", re.I),
     ),
     CleanupRule(
         rule_id="HW-DDL-2",
-        description="SECONDARY_LOAD table option",
-        risk="blocker",
+        description="SECONDARY_LOAD table option (TiFlash replication is automatic once the replica is set)",
+        risk="info",
         action_taken="commented_out",
         auto_cleanable="yes",
         pattern=re.compile(rf"(?:,\s*)?\bSECONDARY_LOAD\s*=\s*{_VALUE}", re.I),

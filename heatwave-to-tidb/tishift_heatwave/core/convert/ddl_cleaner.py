@@ -170,7 +170,7 @@ def clean_statement(stmt: str) -> tuple[str, list[CleanupFinding], bool, str | N
         findings.append(
             CleanupFinding(
                 rule_id="HW-DDL-2",
-                risk="blocker",
+                risk="info",
                 table=table,
                 matched_text=collapsed,
                 action_taken="statement_commented_out",
