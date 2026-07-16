@@ -83,6 +83,78 @@ def test_untouched_schema_passes_through():
     assert result.rapid_tables == []
 
 
+HINT_ONLY_EXAMPLE = """\
+CREATE TABLE guests (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(191) COMMENT 'RAPID_COLUMN=ENCODING=VARLEN',
+  email VARCHAR(191) COMMENT 'RAPID_COLUMN=ENCODING=VARLEN'
+) ENGINE=InnoDB;
+CREATE TABLE plain (id INT PRIMARY KEY, name VARCHAR(50)) ENGINE=InnoDB;
+"""
+
+
+def test_rapid_column_hint_emits_tiflash_replica():
+    result = transform_schema(HINT_ONLY_EXAMPLE, tier="dedicated", tiflash_replicas=2)
+    assert result.rapid_tables == []
+    assert result.rapid_hint_tables == ["guests"]
+    assert result.tiflash_statements == ["ALTER TABLE guests SET TIFLASH REPLICA 2;"]
+    # ALTER placed after the CREATE TABLE, prefixed with a review comment
+    assert "TISHIFT-REVIEW [HW-DDL-5]" in result.sql
+    create_end = result.sql.index("ENGINE=InnoDB;")
+    review_pos = result.sql.index("TISHIFT-REVIEW [HW-DDL-5]")
+    alter_pos = result.sql.index("ALTER TABLE guests SET TIFLASH REPLICA 2;")
+    assert create_end < review_pos < alter_pos
+    assert "ALTER TABLE plain" not in result.sql
+    # one table-level HW-DDL-5 finding, flagged for manual review
+    hint_findings = [f for f in result.findings if f.rule_id == "HW-DDL-5"]
+    assert len(hint_findings) == 1
+    assert hint_findings[0].table == "guests"
+    assert hint_findings[0].risk == "assess"
+    assert hint_findings[0].action_taken == "tiflash_replica_emitted"
+    # RAPID_COLUMN comments themselves stay untouched
+    assert result.sql.count("COMMENT 'RAPID_COLUMN=ENCODING=VARLEN'") == 2
+    assert result.parse_errors == []
+
+
+def test_explicit_rapid_table_does_not_double_fire_hint_rule():
+    result = transform_schema(V2_EXAMPLE, tier="dedicated", tiflash_replicas=1)
+    assert [f for f in result.findings if f.rule_id == "HW-DDL-5"] == []
+    assert result.rapid_hint_tables == []
+    assert result.sql.count("SET TIFLASH REPLICA") == 1
+
+
+def test_hint_with_replicas_zero_notes_only():
+    result = transform_schema(HINT_ONLY_EXAMPLE, tier="dedicated", tiflash_replicas=0)
+    assert result.tiflash_statements == []
+    assert "TISHIFT-INFO [HW-DDL-5]" in result.sql
+    assert "SET TIFLASH REPLICA" not in mask_sql(result.sql)
+    hint_findings = [f for f in result.findings if f.rule_id == "HW-DDL-5"]
+    assert len(hint_findings) == 1
+    assert hint_findings[0].action_taken == "noted_only"
+
+
+def test_hint_idempotent_across_full_pipeline():
+    once = transform_schema(HINT_ONLY_EXAMPLE, tier="dedicated", tiflash_replicas=2)
+    twice = transform_schema(once.sql, tier="dedicated", tiflash_replicas=2)
+    assert twice.sql == once.sql
+    assert twice.tiflash_statements == []
+    assert [f for f in twice.findings if f.action_taken != "kept"] == []
+
+
+def test_hint_idempotent_with_replicas_zero():
+    once = transform_schema(HINT_ONLY_EXAMPLE, tier="dedicated", tiflash_replicas=0)
+    twice = transform_schema(once.sql, tier="dedicated", tiflash_replicas=0)
+    assert twice.sql == once.sql
+    assert [f for f in twice.findings if f.action_taken != "kept"] == []
+
+
+def test_hint_respects_existing_tiflash_statement():
+    sql = HINT_ONLY_EXAMPLE + "\nALTER TABLE guests SET TIFLASH REPLICA 2;\n"
+    result = transform_schema(sql, tier="dedicated", tiflash_replicas=2)
+    assert result.sql.count("SET TIFLASH REPLICA") == 1
+    assert [f for f in result.findings if f.rule_id == "HW-DDL-5"] == []
+
+
 def test_multiple_rapid_tables_each_get_replica():
     sql = (
         "CREATE TABLE a (id INT PRIMARY KEY) SECONDARY_ENGINE=RAPID;\n"

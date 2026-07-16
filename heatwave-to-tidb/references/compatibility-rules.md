@@ -71,6 +71,7 @@ cleaned clauses become `/* TISHIFT-REMOVED [rule-id]: <original> */` comments
 | HW-DDL-2 | `SECONDARY_LOAD=...` option, `ALTER ... SECONDARY_LOAD/UNLOAD` statements | 🔵 info | Comment out (statements become `--` line comments). Info, not a blocker: TiFlash replication is automatic once the replica is set — no load step exists to port | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | Comment out + `TISHIFT-REVIEW` alternative suggestion; goes on the manual-review checklist | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | Keep as-is; reported as informational | ❌ not needed |
+| HW-DDL-5 | RAPID_COLUMN comment hints on a CREATE TABLE with **no** SECONDARY_ENGINE clause | 🟠 needs assessment | Table was likely RAPID-offloaded (dumps often strip table options) — emit `ALTER TABLE ... SET TIFLASH REPLICA n` after the CREATE TABLE plus a `TISHIFT-REVIEW` comment; verify offload status on the live system and drop the replica if analytics is not needed. Tables that do carry SECONDARY_ENGINE are handled by HW-DDL-1 and never double-fire this rule | ⚠️ partial |
 
 ## COMPATIBLE — no changes needed
 

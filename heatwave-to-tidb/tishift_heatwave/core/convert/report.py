@@ -40,6 +40,7 @@ def build_report(
         },
         "findings": [asdict(f) for f in result.findings],
         "rapid_tables": result.rapid_tables,
+        "rapid_hint_tables": result.rapid_hint_tables,
         "tiflash_statements": result.tiflash_statements,
         "parse_errors": result.parse_errors,
         "notes": [
@@ -95,16 +96,24 @@ def render_markdown(report: dict) -> str:
         lines.append("Nothing to review.")
 
     lines += ["", "## TiFlash replicas", ""]
+    hint_tables = report.get("rapid_hint_tables", [])
     if report["tiflash_statements"]:
         lines += ["```sql", *report["tiflash_statements"], "```"]
-    elif report["rapid_tables"]:
+    elif report["rapid_tables"] or hint_tables:
         lines.append(
-            "RAPID tables detected but no replica statements emitted "
+            "RAPID (or hint-flagged) tables detected but no replica statements emitted "
             f"(replicas={report['tiflash_replicas']}) — "
             "see TISHIFT-INFO comments in the output SQL."
         )
     else:
         lines.append("No RAPID-offloaded tables detected.")
+    if hint_tables:
+        lines += [
+            "",
+            "Hint-derived tables (HW-DDL-5: RAPID_COLUMN comments without "
+            "SECONDARY_ENGINE — verify RAPID offload status on the live system): "
+            + ", ".join(f"`{t}`" for t in hint_tables),
+        ]
 
     if report["parse_errors"]:
         lines += ["", "## Parse errors (cleanup left invalid syntax — fix manually)", ""]

@@ -82,5 +82,23 @@ RAPID_COLUMN_RULE = CleanupRule(
     ),
 )
 
+# Inference rule: RAPID_COLUMN comment hints on a CREATE TABLE that has no
+# SECONDARY_ENGINE clause (common in dumps that strip table options) imply the
+# table was likely RAPID-offloaded in HeatWave. The convert engine emits a
+# TiFlash replica ALTER for such tables, flagged TISHIFT-REVIEW for
+# verification against the live system. Shares the HW-DDL-4 pattern; the
+# engine fires it once per table, not per comment.
+RAPID_HINT_RULE = CleanupRule(
+    rule_id="HW-DDL-5",
+    description=(
+        "RAPID_COLUMN comment hints without SECONDARY_ENGINE "
+        "(table likely RAPID-offloaded — TiFlash replica emitted, verify on live system)"
+    ),
+    risk="assess",
+    action_taken="tiflash_replica_emitted",
+    auto_cleanable="partial",
+    pattern=RAPID_COLUMN_RULE.pattern,
+)
+
 # Canonical rule list for report rendering (HW-DDL-2 listed once).
-ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE]
+ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE, RAPID_HINT_RULE]
