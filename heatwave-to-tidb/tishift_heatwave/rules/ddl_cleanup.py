@@ -100,5 +100,23 @@ RAPID_HINT_RULE = CleanupRule(
     pattern=RAPID_COLUMN_RULE.pattern,
 )
 
+# Mapping rule: FULLTEXT indexes are parse-only outside Starter (WARNING-2) —
+# TiDB accepts the syntax but builds no index. The TiDB-side answer is a
+# TiFlash replica on the table: columnar scans accelerate scan-based full-text
+# filtering (LIKE / REGEXP) in place of the index. MATCH ... AGAINST queries
+# still need rewriting, so the emitted ALTER carries a TISHIFT-REVIEW note.
+# The FULLTEXT KEY clause itself is kept (harmless, parse-only).
+FULLTEXT_RULE = CleanupRule(
+    rule_id="HW-DDL-6",
+    description=(
+        "FULLTEXT index (parse-only outside Starter — TiFlash replica emitted to "
+        "accelerate scan-based full-text filtering; rewrite MATCH ... AGAINST)"
+    ),
+    risk="assess",
+    action_taken="tiflash_replica_emitted",
+    auto_cleanable="partial",
+    pattern=re.compile(r"\bFULLTEXT\s+(?:KEY|INDEX)\b", re.I),
+)
+
 # Canonical rule list for report rendering (HW-DDL-2 listed once).
-ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE, RAPID_HINT_RULE]
+ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE, RAPID_HINT_RULE, FULLTEXT_RULE]

@@ -155,6 +155,63 @@ def test_hint_respects_existing_tiflash_statement():
     assert [f for f in result.findings if f.rule_id == "HW-DDL-5"] == []
 
 
+FULLTEXT_EXAMPLE = """\
+CREATE TABLE comments (
+  id BIGINT PRIMARY KEY,
+  summary TEXT,
+  FULLTEXT KEY ft_summary (summary)
+) ENGINE=InnoDB;
+CREATE TABLE plain2 (id INT PRIMARY KEY) ENGINE=InnoDB;
+"""
+
+
+def test_fulltext_index_emits_tiflash_replica():
+    result = transform_schema(FULLTEXT_EXAMPLE, tier="essential", tiflash_replicas=2)
+    assert result.fulltext_tables == ["comments"]
+    assert result.tiflash_statements == ["ALTER TABLE comments SET TIFLASH REPLICA 2;"]
+    assert "TISHIFT-REVIEW [HW-DDL-6]" in result.sql
+    # FULLTEXT clause is kept, not commented out
+    assert "FULLTEXT KEY ft_summary (summary)" in result.sql
+    assert "ALTER TABLE plain2" not in result.sql
+    ft_findings = [f for f in result.findings if f.rule_id == "HW-DDL-6"]
+    assert len(ft_findings) == 1
+    assert ft_findings[0].table == "comments"
+    assert ft_findings[0].risk == "assess"
+    assert result.parse_errors == []
+
+
+def test_fulltext_plus_hint_single_alter_both_findings():
+    sql = (
+        "CREATE TABLE mixed (\n"
+        "  id BIGINT PRIMARY KEY,\n"
+        "  body TEXT COMMENT 'RAPID_COLUMN=ENCODING=VARLEN',\n"
+        "  FULLTEXT KEY ft_body (body)\n"
+        ") ENGINE=InnoDB;\n"
+    )
+    result = transform_schema(sql, tier="essential", tiflash_replicas=2)
+    assert result.sql.count("SET TIFLASH REPLICA") == 1
+    assert result.rapid_hint_tables == ["mixed"]
+    assert result.fulltext_tables == ["mixed"]
+    assert "TISHIFT-REVIEW [HW-DDL-5]" in result.sql
+    assert "TISHIFT-REVIEW [HW-DDL-6]" in result.sql
+    assert {f.rule_id for f in result.findings if f.risk == "assess"} == {"HW-DDL-5", "HW-DDL-6"}
+
+
+def test_fulltext_idempotent_across_full_pipeline():
+    once = transform_schema(FULLTEXT_EXAMPLE, tier="essential", tiflash_replicas=2)
+    twice = transform_schema(once.sql, tier="essential", tiflash_replicas=2)
+    assert twice.sql == once.sql
+    assert twice.tiflash_statements == []
+    assert [f for f in twice.findings if f.action_taken != "kept"] == []
+
+
+def test_fulltext_idempotent_with_replicas_zero():
+    once = transform_schema(FULLTEXT_EXAMPLE, tier="essential", tiflash_replicas=0)
+    assert "TISHIFT-INFO [HW-DDL-6]" in once.sql
+    twice = transform_schema(once.sql, tier="essential", tiflash_replicas=0)
+    assert twice.sql == once.sql
+
+
 def test_multiple_rapid_tables_each_get_replica():
     sql = (
         "CREATE TABLE a (id INT PRIMARY KEY) SECONDARY_ENGINE=RAPID;\n"

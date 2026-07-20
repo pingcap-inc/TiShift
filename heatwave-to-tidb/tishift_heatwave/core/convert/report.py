@@ -41,6 +41,7 @@ def build_report(
         "findings": [asdict(f) for f in result.findings],
         "rapid_tables": result.rapid_tables,
         "rapid_hint_tables": result.rapid_hint_tables,
+        "fulltext_tables": result.fulltext_tables,
         "tiflash_statements": result.tiflash_statements,
         "parse_errors": result.parse_errors,
         "notes": [
@@ -97,12 +98,13 @@ def render_markdown(report: dict) -> str:
 
     lines += ["", "## TiFlash replicas", ""]
     hint_tables = report.get("rapid_hint_tables", [])
+    fulltext_tables = report.get("fulltext_tables", [])
     if report["tiflash_statements"]:
         lines += ["```sql", *report["tiflash_statements"], "```"]
-    elif report["rapid_tables"] or hint_tables:
+    elif report["rapid_tables"] or hint_tables or fulltext_tables:
         lines.append(
-            "RAPID (or hint-flagged) tables detected but no replica statements emitted "
-            f"(replicas={report['tiflash_replicas']}) — "
+            "RAPID (or hint/FULLTEXT-flagged) tables detected but no replica statements "
+            f"emitted (replicas={report['tiflash_replicas']}) — "
             "see TISHIFT-INFO comments in the output SQL."
         )
     else:
@@ -113,6 +115,13 @@ def render_markdown(report: dict) -> str:
             "Hint-derived tables (HW-DDL-5: RAPID_COLUMN comments without "
             "SECONDARY_ENGINE — verify RAPID offload status on the live system): "
             + ", ".join(f"`{t}`" for t in hint_tables),
+        ]
+    if fulltext_tables:
+        lines += [
+            "",
+            "FULLTEXT-index tables (HW-DDL-6: parse-only outside Starter — the TiFlash "
+            "replica accelerates scan-based full-text filtering; rewrite "
+            "MATCH ... AGAINST queries): " + ", ".join(f"`{t}`" for t in fulltext_tables),
         ]
 
     if report["parse_errors"]:

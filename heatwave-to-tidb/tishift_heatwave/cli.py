@@ -212,6 +212,7 @@ def convert(
     click.echo(
         f"RAPID tables: {len(result.rapid_tables)}; "
         f"hint-flagged tables (HW-DDL-5): {len(result.rapid_hint_tables)}; "
+        f"FULLTEXT tables (HW-DDL-6): {len(result.fulltext_tables)}; "
         f"TiFlash statements emitted: {len(result.tiflash_statements)}"
     )
     review_count = sum(1 for f in result.findings if f.risk == "assess")

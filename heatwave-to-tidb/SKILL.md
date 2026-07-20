@@ -239,6 +239,8 @@ mysql -h $SRC_HOST -P 3306 -u $SRC_USER --password="$SRC_PWD" --raw -e "SHOW CRE
 ALTER TABLE $DB.<table> SET TIFLASH REPLICA 2;
 ```
 Tables whose columns carry `COMMENT 'RAPID_COLUMN=...'` hints but whose DDL has no `SECONDARY_ENGINE` clause (common when a dump tool strips table options) get the same replica statement plus a `TISHIFT-REVIEW [HW-DDL-5]` comment — they were likely RAPID-offloaded, but confirm against the live system (Step 2.3) and drop the replica if analytics offload isn't needed.
+
+Tables with a `FULLTEXT` index also get a replica statement plus a `TISHIFT-REVIEW [HW-DDL-6]` comment (WARNING-2 mapping): FULLTEXT is parse-only outside Starter, and the TiFlash replica accelerates scan-based full-text filtering (`LIKE`/`REGEXP`) on the column in place of the index. `MATCH ... AGAINST` queries must be rewritten; point the user at an external search engine when relevance-ranked search is required. One ALTER per table even when several rules fire.
 Trade-off to tell the user: because the replica exists before data load, TiFlash replicates during the import, which slows large loads — if import speed matters, they can remove the ALTERs from the schema file and run them after the load instead.
 
 **Step 4.4 — Code stubs:** For each stored procedure, trigger, event, and JS routine, generate an application-code stub in the user's preferred language and list them as post-migration work.
