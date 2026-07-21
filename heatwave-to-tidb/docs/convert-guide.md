@@ -3,9 +3,12 @@
 `tishift-heatwave convert` turns HeatWave DDL into TiDB-compatible DDL:
 
 ```bash
-tishift-heatwave convert --ddl-file schema.sql --tier dedicated
-tishift-heatwave convert --ddl-file schema.sql --dry-run   # diff only
+tishift-heatwave convert --config tishift-heatwave.yaml --ddl-file schema.sql
+tishift-heatwave convert --ddl-file schema.sql --tier dedicated   # override tier without a config file
+tishift-heatwave convert --config tishift-heatwave.yaml --ddl-file schema.sql --dry-run   # diff only
 ```
+
+`--tier` defaults to `target.tier` from `--config` (`tishift-heatwave.yaml`, default `essential`); pass `--tier` explicitly to override it or to run without a config file.
 
 ## Comment-preserving cleanup (HW-DDL rules)
 

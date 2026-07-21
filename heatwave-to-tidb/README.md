@@ -17,6 +17,54 @@ This module focuses on the HeatWave-specific surface:
 - **JavaScript (MLE) stored programs** → application-code stubs
 - Standard MySQL gaps (stored procedures, triggers, events, spatial, 0900 collations)
 
+## How it works
+
+The migration runs as seven phases, the same sequence a DBA would follow by
+hand. Each phase reads the previous phase's output and produces its own
+artifact (report, converted SQL, etc.) you can inspect before moving on —
+nothing downstream runs silently on your behalf.
+
+| Phase | What happens | Automated by |
+|---|---|---|
+| 1. Connect | Verify source (HeatWave) and target (TiDB) are reachable over TLS; detect whether a RAPID cluster is attached | Manual (`mysql -e ...`) or the AI skill |
+| 2. Scan | Inventory the schema and HeatWave-specific feature usage: RAPID-offloaded tables, Lakehouse external tables, AutoML schemas, VECTOR/spatial columns, FULLTEXT indexes, JS (MLE) routines, and — if continue-replication is planned — binlog readiness | `tishift-heatwave scan` |
+| 3. Assess & Score | Apply the compatibility rule set (`references/compatibility-rules.md`) and compute a 0-100 readiness score with blockers/warnings broken out by category | `tishift-heatwave scan` (same command as Scan) |
+| 4. Convert | Rewrite HeatWave-only DDL into TiDB-compatible DDL — unsupported clauses become `TISHIFT-REMOVED` comments (nothing is deleted), and every RAPID/FULLTEXT table gets an inline `ALTER TABLE ... SET TIFLASH REPLICA` | `tishift-heatwave convert` |
+| 5. Load | Export data from HeatWave (Dumpling) and import into TiDB via the tier-appropriate path (`ticloud` import, direct load, or Lightning) | **Not automated — intentionally manual.** See [`docs/load-guide.md`](docs/load-guide.md) |
+| 6. Validate | Compare row counts, column structure, and checksums between source and target; confirm TiFlash replicas report `AVAILABLE=1` | Manual or the AI skill |
+| 7. Continue-replication sync & cutover *(optional — Essential/Dedicated)* | Grant DM users, run the valid-index precheck, create a DM task in the TiDB Cloud Console off the HeatWave binlog, monitor lag to zero | Manual (Console + prechecks); **cutover itself — stopping writes and repointing the application — is always your decision, never automated** |
+
+Load and cutover are the two highest-stakes, least-reversible steps in any
+migration, so this tool deliberately keeps a human in the loop for both
+rather than scripting them.
+
+## Prerequisites — prepare these before you start
+
+- **Network path to the HeatWave DB System.** Public-accessibility DB Systems
+  connect directly over TLS (your client IP must be in the allowed range);
+  VCN-private DB Systems need an SSH tunnel through an OCI Bastion session, a
+  compute jump host in the same VCN, or a site-to-site VPN.
+- **The HeatWave instance CA certificate.** TLS is mandatory on HeatWave, not
+  optional. Download it from OCI Console → DB System → Connect, or extract it
+  with `openssl s_client -connect <host>:3306 -starttls mysql -showcerts`.
+- **A source MySQL user** with `SELECT` on the schemas to migrate, plus read
+  access to `information_schema` and `performance_schema` (needed to detect
+  RAPID offload). Add `REPLICATION SLAVE, REPLICATION CLIENT` if
+  continue-replication sync (Phase 7) is planned.
+- **A target TiDB Cloud cluster (or self-hosted TiDB) and a tier decision** —
+  Starter (free, cutover-only), Essential (autoscaling + DM continue
+  replication), or Dedicated (full HTAP, Lightning, DM, PCI-DSS/SOC 2). Set it
+  once as `target.tier` in your config file; it drives the load strategy,
+  whether Phase 7 is available, and the tier `convert` targets by default.
+- **If continue-replication (Phase 7) is planned**, the source also needs:
+  `log_bin=ON`, `binlog_format=ROW`, `binlog_row_image=FULL`,
+  `binlog_expire_logs_seconds ≥ 86400` (604800 recommended),
+  `binlog_transaction_compression=OFF`, and `binlog_row_value_options=''`
+  (not `PARTIAL_JSON`). `scan --continue-replication` checks all of these for
+  you — see [`docs/sync-guide.md`](docs/sync-guide.md).
+- **Python 3.10+** for the CLI toolkit, and `tiup` (Dumpling) for the manual
+  load phase.
+
 ## Implementation status
 
 `scan` and `convert` are implemented and unit-tested. `check` and `sync` are
@@ -82,7 +130,8 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
 cp config/tishift-heatwave.example.yaml tishift-heatwave.yaml
-# Edit with your HeatWave and TiDB credentials.
+# Edit with your HeatWave and TiDB credentials, and set target.tier to the
+# TiDB Cloud tier you're migrating to (essential by default — see config comments).
 # Public-endpoint DB Systems connect directly over TLS; VCN-private ones
 # need an SSH tunnel or OCI Bastion session (see config comments).
 
@@ -92,8 +141,9 @@ tishift-heatwave scan --config tishift-heatwave.yaml --continue-replication --fo
 # Convert schema — HeatWave-only clauses become TISHIFT-REMOVED comments
 # (auditable, nothing deleted); every RAPID table (explicit SECONDARY_ENGINE,
 # RAPID_COLUMN comment hints, or a FULLTEXT index) gets an inline
-# ALTER TABLE ... SET TIFLASH REPLICA right after its CREATE TABLE
-tishift-heatwave convert --ddl-file schema.sql --tier dedicated --dry-run
+# ALTER TABLE ... SET TIFLASH REPLICA right after its CREATE TABLE.
+# --tier defaults to target.tier from --config; pass --tier to override it.
+tishift-heatwave convert --config tishift-heatwave.yaml --ddl-file schema.sql
 
 # Load is intentionally disabled (complete it independently per
 # docs/load-guide.md); check is not automated yet — both print a notice
@@ -118,7 +168,7 @@ tishift-heatwave scan --config tishift-heatwave.yaml --continue-replication --fo
 # --- Phase 4: Extract DDL, convert, apply ---
 # --raw is required — without it, mysql's batch mode escapes newlines as literal \n
 mysql --ssl-mode=VERIFY_IDENTITY --ssl-ca="$SRC_CA" -h "$SRC_HOST" -P "$SRC_PORT" -u "$SRC_USER" --password="$SRC_PWD" --raw -e "SHOW CREATE TABLE $SRC_DB.<table>\G"
-tishift-heatwave convert --ddl-file schema.sql --tier essential
+tishift-heatwave convert --config tishift-heatwave.yaml --ddl-file schema.sql
 # SHOW CREATE TABLE output isn't FK-topologically ordered — applying it straight
 # can fail with "ERROR 1824: Failed to open the referenced table '<parent>'"
 mysql --ssl-mode=VERIFY_IDENTITY --ssl-ca="$TGT_CA" -h "$TGT_HOST" -P "$TGT_PORT" -u "$TGT_USER" --password="$TGT_PWD" -e "SET FOREIGN_KEY_CHECKS=0; SOURCE tishift-reports/converted-schema.sql; SET FOREIGN_KEY_CHECKS=1;"

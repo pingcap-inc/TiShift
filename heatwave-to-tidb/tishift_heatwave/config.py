@@ -48,19 +48,6 @@ class TargetConfig(BaseModel):
         return tier
 
 
-class CloudConfig(BaseModel):
-    """TiDB Cloud settings (required for Starter/Essential ticloud CLI import)."""
-
-    cluster_id: str = ""
-    project_id: str = ""
-
-
-class AIConfig(BaseModel):
-    provider: str = "none"
-    api_key: str = ""
-    model: str = ""
-
-
 class OutputConfig(BaseModel):
     dir: str = "./tishift-reports"
     formats: list[str] = Field(default_factory=lambda: ["cli", "json"])
@@ -79,8 +66,6 @@ class MetricsConfig(BaseModel):
 class TiShiftHeatWaveConfig(BaseModel):
     source: SourceConfig
     target: TargetConfig
-    cloud: CloudConfig = Field(default_factory=CloudConfig)
-    ai: AIConfig = Field(default_factory=AIConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     metrics: MetricsConfig = Field(default_factory=MetricsConfig)

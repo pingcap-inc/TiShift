@@ -140,11 +140,11 @@ def scan(
     help="SQL file with CREATE TABLE statements (SHOW CREATE TABLE / mysqldump output).",
 )
 @click.option("--scan-report", default=None, help="Path to scan report JSON (not yet implemented).")
+@click.option("--config", default="tishift-heatwave.yaml", help="Path to config file (source of --tier when omitted).")
 @click.option(
     "--tier",
-    default="starter",
-    show_default=True,
-    help="Target TiDB tier: starter, essential, dedicated, self-hosted.",
+    default=None,
+    help="Target TiDB tier: starter, essential, dedicated, self-hosted (default: target.tier from --config).",
 )
 @click.option(
     "--tiflash-replicas",
@@ -157,7 +157,8 @@ def scan(
 def convert(
     ddl_file: str | None,
     scan_report: str | None,
-    tier: str,
+    config: str,
+    tier: str | None,
     tiflash_replicas: int,
     dry_run: bool,
     output_dir: str,
@@ -179,6 +180,9 @@ def convert(
         raise click.UsageError(
             "--ddl-file is required (scan-report-driven convert is not yet implemented)."
         )
+
+    if tier is None:
+        tier = _load_config_or_fail(config).target.tier
 
     original = Path(ddl_file).read_text()
     result = transform_schema(original, tier=tier, tiflash_replicas=tiflash_replicas)

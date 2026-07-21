@@ -15,9 +15,7 @@ def test_load_config(sample_config_path):
     assert config.target.tier == "starter"
 
     # Defaults for omitted sections
-    assert config.ai.provider == "none"
     assert config.output.dir == "./tishift-reports"
-    assert config.cloud.cluster_id == ""
 
 
 def test_env_var_resolution(tmp_path, monkeypatch):

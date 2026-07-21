@@ -87,3 +87,88 @@ def test_convert_requires_ddl_file():
     result = runner.invoke(main, ["convert"])
     assert result.exit_code != 0
     assert "--ddl-file is required" in result.output
+
+
+def test_convert_tier_defaults_from_config(tmp_path):
+    ddl_file = tmp_path / "schema.sql"
+    ddl_file.write_text(DDL)
+    out_dir = tmp_path / "out"
+    config_file = tmp_path / "tishift-heatwave.yaml"
+    config_file.write_text(
+        """\
+source:
+  host: 10.0.1.15
+  user: admin
+  database: testdb
+
+target:
+  host: tidb.example.com
+  user: root
+  database: testdb
+  tier: dedicated
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "convert",
+            "--ddl-file", str(ddl_file),
+            "--config", str(config_file),
+            "--output-dir", str(out_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads((out_dir / "ddl-cleanup-report.json").read_text())
+    assert report["tier"] == "dedicated"
+
+
+def test_convert_tier_flag_overrides_config(tmp_path):
+    ddl_file = tmp_path / "schema.sql"
+    ddl_file.write_text(DDL)
+    out_dir = tmp_path / "out"
+    config_file = tmp_path / "tishift-heatwave.yaml"
+    config_file.write_text(
+        """\
+source:
+  host: 10.0.1.15
+  user: admin
+  database: testdb
+
+target:
+  host: tidb.example.com
+  user: root
+  database: testdb
+  tier: dedicated
+"""
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        [
+            "convert",
+            "--ddl-file", str(ddl_file),
+            "--config", str(config_file),
+            "--tier", "essential",
+            "--output-dir", str(out_dir),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads((out_dir / "ddl-cleanup-report.json").read_text())
+    assert report["tier"] == "essential"
+
+
+def test_convert_without_tier_or_config_fails(tmp_path, monkeypatch):
+    ddl_file = tmp_path / "schema.sql"
+    ddl_file.write_text(DDL)
+    monkeypatch.chdir(tmp_path)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["convert", "--ddl-file", str(ddl_file)])
+
+    assert result.exit_code != 0
+    assert "Config file not found" in result.output
