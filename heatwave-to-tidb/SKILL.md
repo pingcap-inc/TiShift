@@ -2,7 +2,7 @@
 name: heatwave-to-tidb-migration
 description: Migrate MySQL HeatWave databases to TiDB — assess readiness, convert schema, load data, and validate. Use this skill whenever someone mentions migrating from MySQL HeatWave, Oracle MySQL Database Service, or OCI MySQL to TiDB, wants to assess HeatWave compatibility with TiDB, needs to map HeatWave analytics (RAPID) to TiFlash, or is planning any HeatWave to TiDB migration project, even if they don't use the word "migration" explicitly.
 metadata:
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # MySQL HeatWave to TiDB Migration

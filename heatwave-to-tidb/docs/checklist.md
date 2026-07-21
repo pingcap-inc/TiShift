@@ -55,7 +55,7 @@ Full detail: `references/compatibility-rules.md`.
 
 | ID | Condition | Feature | Action |
 |----|-----------|---------|--------|
-| WARNING-2 | `has_fulltext_indexes = TRUE` AND target tier != starter | FULLTEXT — real index support is Starter-only (region-limited); Essential/Dedicated/self-hosted only parse the syntax | Starter: confirm region support. Others: use Elasticsearch/Meilisearch or TiDB's native full-text/vector search |
+| WARNING-2 | `has_fulltext_indexes = TRUE` AND target tier != starter | FULLTEXT — real index support is Starter-only (region-limited); Essential/Dedicated/self-hosted only parse the syntax | Starter: confirm region support. Others: convert emits a TiFlash replica automatically (HW-DDL-6) — columnar scans accelerate `LIKE`/`REGEXP` filtering in place of the index; rewrite `MATCH ... AGAINST`, or use Elasticsearch/Meilisearch for relevance-ranked search |
 | WARNING-3 | `auto_increment_table_count > 0` | AUTO_INCREMENT — unique but NOT sequential | Consider AUTO_RANDOM for high-insert tables, or MySQL Compatibility Mode for strict sequential IDs |
 | WARNING-4 | `unsupported_collation_count > 0` | `utf8mb4_0900_*` collations (MySQL 8 default) | Maps 1:1 — supported natively on TiDB ≥ v7.4 (target TiDB Cloud is v8.5). Informational only; no readiness-score impact. **Foreign keys likewise no longer warn** — enforced natively since v6.6, though TiDB Cloud DM's precheck still reports FK warnings even when the migration is safe (see §10.5) |
 | WARNING-5 | GET_LOCK usage detected | Limited implementation | Test advisory locking; consider Redis-based locks |
@@ -90,6 +90,8 @@ with sqlglot to confirm the cleanup left valid syntax.
 | HW-DDL-2 | `SECONDARY_LOAD=...` option / `ALTER ... SECONDARY_LOAD`/`SECONDARY_UNLOAD` statements | 🔵 info | Comment out (statements → `--` line comments) — TiFlash replication is automatic once the replica is set | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | Comment out + `TISHIFT-REVIEW` suggestion (secondary index, or clustered PK if columns are a PK prefix); goes on the manual-review checklist | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | Keep as-is; reported only | ❌ not needed |
+| HW-DDL-5 | RAPID_COLUMN hints on a CREATE TABLE with **no** SECONDARY_ENGINE clause (dumps often strip table options) | 🟠 needs assessment | Table was likely RAPID-offloaded — emit a TiFlash replica ALTER + `TISHIFT-REVIEW` comment; verify offload status on the live system, drop the replica if not needed. Tables that do carry SECONDARY_ENGINE stay on HW-DDL-1, never double-fired | ⚠️ partial |
+| HW-DDL-6 | `FULLTEXT KEY/INDEX` (WARNING-2 mapping) | 🟠 needs assessment | FULLTEXT is parse-only outside Starter — emit a TiFlash replica ALTER + `TISHIFT-REVIEW` comment; columnar scans accelerate `LIKE`/`REGEXP` filtering in place of the index. `MATCH ... AGAINST` still needs rewriting. One ALTER per table even when HW-DDL-5 also fires | ⚠️ partial |
 
 **Attention:** if a removed clause itself contains `*/`, the engine degrades
 to a `--` line comment so the wrapping comment can't close early.
@@ -107,9 +109,13 @@ Full detail: `references/compatibility-rules.md` § DDL cleanup rules, `docs/con
 | `AUTO_INCREMENT` | Same (non-sequential) or `AUTO_RANDOM` | WARNING-3 |
 | Updatable view (`IS_UPDATABLE='YES'`) | View stays, becomes read-only | WARNING-9 |
 | Case-colliding table names, source `lower_case_table_names != 2` | Rename to remove the collision | BLOCKER-9 / WARNING-8 |
-| `NOT SECONDARY` (column) | Stripped — TiFlash replicates whole tables | Note excluded columns in the report |
 | `ENGINE_ATTRIBUTE`/`SECONDARY_ENGINE_ATTRIBUTE` (Lakehouse) | — | HW-BLOCKER-1 |
 | `ENCRYPTION='Y'` | Stripped — TiDB Cloud encrypts at rest by default | — |
+
+**Not yet implemented:** column-level `NOT SECONDARY` is not stripped by
+`convert` today — it isn't valid MySQL/TiDB column syntax on its own, so a
+table carrying it fails the post-cleanup re-parse and `convert` exits
+non-zero. Strip it from the DDL by hand first. See `docs/convert-guide.md` § Planned.
 
 Full detail: `references/type-mapping.md`.
 
@@ -138,13 +144,19 @@ The scan is read-only — source session is `TRANSACTION READ ONLY`. Full detail
 ## 7. Convert phase — attention tips
 
 - Nothing is silently dropped — see §4 (DDL cleanup rules)
+- **Three independent triggers emit a TiFlash replica**, not just explicit
+  RAPID tables: HW-DDL-1 (`SECONDARY_ENGINE=RAPID`), HW-DDL-5 (RAPID_COLUMN
+  hints with no SECONDARY_ENGINE clause — common once a dump strips table
+  options), and HW-DDL-6 (a FULLTEXT index, mapping WARNING-2). A table hit by
+  more than one still gets exactly one ALTER, with a review comment per rule
+  that fired.
 - **TiFlash replica trade-off**: the `ALTER TABLE ... SET TIFLASH REPLICA n`
-  is placed immediately after each RAPID table's `CREATE TABLE`, so the
+  is placed immediately after each flagged table's `CREATE TABLE`, so the
   replica exists *before* data load — TiFlash replicates during the import,
   which slows large loads. Move the ALTERs to after the load window if import
   speed matters.
 - Replica statements are emitted on every tier (Starter/Serverless included,
-  default 2 replicas); only `--tiflash-replicas 0` downgrades the ALTER to an
+  default 2 replicas); only `--tiflash-replicas 0` downgrades every ALTER to an
   informational comment.
 - Code stubs for stored procedures/triggers/events/JS routines are generated
   but require manual porting — not a drop-in replacement.

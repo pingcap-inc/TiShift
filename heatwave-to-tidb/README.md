@@ -6,11 +6,16 @@ HeatWave is MySQL 8.0/8.4/9.x under the hood, so core compatibility with TiDB is
 This module focuses on the HeatWave-specific surface:
 
 - **RAPID analytics offload** (`SECONDARY_ENGINE=RAPID`) → mapped to **TiFlash replicas**
+- **RAPID_COLUMN comment hints without a SECONDARY_ENGINE clause** (common once a dump
+  tool strips table options) → same TiFlash replica, flagged for live-system verification
+- **FULLTEXT indexes** (parse-only outside Starter) → same TiFlash replica, so columnar
+  scans can accelerate `LIKE`/`REGEXP` filtering in place of the missing index; `MATCH
+  ... AGAINST` still needs an application-side rewrite
 - **Lakehouse external tables** → blocker; data lives in Object Storage, must be materialized
 - **AutoML / GenAI** (`ML_SCHEMA_*`, `sys.ML_*` routines) → blocker; re-host models externally
 - **VECTOR columns** (MySQL 9) → TiDB Cloud `VECTOR` with index-syntax rework
 - **JavaScript (MLE) stored programs** → application-code stubs
-- Standard MySQL gaps (stored procedures, triggers, events, spatial, FULLTEXT, 0900 collations)
+- Standard MySQL gaps (stored procedures, triggers, events, spatial, 0900 collations)
 
 ## Implementation status
 
@@ -35,6 +40,23 @@ stop at a verified, healthy DM continue-replication task — actually stopping
 writes on the source and repointing the application is a decision for you
 (or your TiDB account team) to make and execute, not something to automate
 or walk through live here.
+
+### DDL cleanup rules (convert phase)
+
+| Rule | Trigger | Action |
+|---|---|---|
+| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` table option | Comment out; emit a TiFlash replica ALTER |
+| HW-DDL-2 | `SECONDARY_LOAD=...` option / standalone `ALTER ... SECONDARY_LOAD\|UNLOAD` | Comment out — TiFlash replication is automatic once the replica exists |
+| HW-DDL-3 | `CLUSTERING BY (...)` | Comment out + a `TISHIFT-REVIEW` alternative (secondary index, or clustered PK) |
+| HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` column comment | Kept as-is — harmless on TiDB |
+| HW-DDL-5 | RAPID_COLUMN hints with **no** SECONDARY_ENGINE clause (dumps often strip table options) | Emit a TiFlash replica ALTER + `TISHIFT-REVIEW`, flagged to confirm RAPID offload status on the live system |
+| HW-DDL-6 | `FULLTEXT KEY/INDEX` (WARNING-2: parse-only outside Starter) | Emit a TiFlash replica ALTER + `TISHIFT-REVIEW` — columnar scans accelerate `LIKE`/`REGEXP` filtering; `MATCH ... AGAINST` still needs an application-side rewrite |
+
+Every removed clause becomes a plain `/* TISHIFT-REMOVED [rule-id]: ... */` or
+`-- TISHIFT-REMOVED [rule-id]: ...` comment — nothing is deleted, and the
+conversion is idempotent (re-running `convert` on its own output is a no-op).
+See [`references/compatibility-rules.md`](references/compatibility-rules.md)
+for the full BLOCKER-\*/WARNING-\*/HW-\* rule set applied by `scan`.
 
 ## AI skill
 
@@ -68,7 +90,8 @@ cp config/tishift-heatwave.example.yaml tishift-heatwave.yaml
 tishift-heatwave scan --config tishift-heatwave.yaml --continue-replication --format cli --format json --format md
 
 # Convert schema — HeatWave-only clauses become TISHIFT-REMOVED comments
-# (auditable, nothing deleted); each RAPID table gets an inline
+# (auditable, nothing deleted); every RAPID table (explicit SECONDARY_ENGINE,
+# RAPID_COLUMN comment hints, or a FULLTEXT index) gets an inline
 # ALTER TABLE ... SET TIFLASH REPLICA right after its CREATE TABLE
 tishift-heatwave convert --ddl-file schema.sql --tier dedicated --dry-run
 
@@ -129,12 +152,12 @@ heatwave-to-tidb/
 ├── docs/                       Getting started + per-phase guides
 ├── sql/                        Sample schema exercising HeatWave features
 ├── tishift_heatwave/           Python CLI toolkit
-│   ├── core/scan/              Schema collectors, HeatWave detection, analyzers, reporters
-│   ├── core/convert/           DDL transform, TiFlash emission, code stubs
-│   ├── core/load/              Dumpling, ticloud import, direct, Lightning
-│   ├── core/check/             Row count, column, checksum validation
-│   ├── core/sync/              Continue replication via TiDB DM (binlog replication)
-│   └── rules/                  Type mapping, compatibility rules, scoring
+│   ├── core/scan/              Schema collectors, HeatWave detection, analyzers, reporters — implemented
+│   ├── core/convert/           DDL transform, TiFlash emission, code stubs — implemented
+│   ├── core/load/              Scope docstring only — CLI stub exits non-zero, see docs/load-guide.md
+│   ├── core/check/             Scope docstring only — CLI stub exits non-zero, see docs/check-guide.md
+│   ├── core/sync/              Scope docstring only — CLI stub exits non-zero, see docs/sync-guide.md
+│   └── rules/                  Type mapping, compatibility rules, DDL cleanup rules, scoring
 └── tests/                      Unit tests (offline, fixture-driven)
 ```
 

@@ -2,9 +2,10 @@
 
 `tishift-heatwave scan` connects to the source, runs every collector below,
 applies the compatibility rules and readiness scoring, and prints/writes the
-result. Fully implemented and unit-tested (174 tests across
+result. Fully implemented and unit-tested (136 tests across
 `core/scan/collectors/`, `core/scan/analyzers/`, `core/scan/orchestrator.py`,
-`core/scan/report.py`, and `rules/`).
+`core/scan/report.py`, and `rules/`; run `pytest tests/test_scan -q` to
+reproduce the count).
 
 ```bash
 tishift-heatwave scan --config tishift-heatwave.yaml

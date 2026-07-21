@@ -35,12 +35,24 @@ CREATE TABLE stores (
   SPATIAL INDEX idx_location (location)
 ) ENGINE=InnoDB;
 
--- FULLTEXT index — WARNING-2 on self-hosted targets
+-- FULLTEXT index — WARNING-2 (parse-only on Essential/Dedicated/self-hosted);
+-- convert maps this to a TiFlash replica (HW-DDL-6)
 CREATE TABLE articles (
   id INT AUTO_INCREMENT PRIMARY KEY,
   title VARCHAR(200) NOT NULL,
   body MEDIUMTEXT,
   FULLTEXT INDEX idx_body (title, body)
+) ENGINE=InnoDB;
+
+-- RAPID_COLUMN comment hints with no SECONDARY_ENGINE clause — as if a dump
+-- tool stripped the table option; convert still infers RAPID offload and
+-- emits a TiFlash replica for review (HW-DDL-5)
+CREATE TABLE reviews (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_sku VARCHAR(64) NOT NULL COMMENT 'RAPID_COLUMN=ENCODING=VARLEN',
+  rating TINYINT NOT NULL,
+  comment TEXT COMMENT 'RAPID_COLUMN=ENCODING=VARLEN',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
 -- VECTOR column (MySQL 9 / HeatWave GenAI) — HW-WARNING-2

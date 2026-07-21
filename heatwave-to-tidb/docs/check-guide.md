@@ -15,8 +15,10 @@ Checks, in order:
    the scan report so only unexpected drift is reported
 3. **Checksums** (`--checksum`) — `BIT_XOR(CRC32(CONCAT_WS('#', ...)))` over
    matching PK ranges for tables with a numeric primary key
-4. **TiFlash replicas** — every table from `tiflash-replicas.sql` reports
-   `AVAILABLE = 1` in `information_schema.tiflash_replica`
+4. **TiFlash replicas** — every table with an inline `SET TIFLASH REPLICA`
+   statement in `converted-schema.sql` (RAPID tables, RAPID_COLUMN hints, and
+   FULLTEXT-index tables — see `docs/convert-guide.md`) reports `AVAILABLE = 1`
+   in `information_schema.tiflash_replica`
 
 Once automated, the exit code will be non-zero when any check fails, so the
 command can gate a cutover pipeline.

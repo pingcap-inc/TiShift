@@ -30,6 +30,7 @@ and calls out the exceptions.
 | `AUTO_INCREMENT` | `AUTO_INCREMENT` (non-sequential) or `AUTO_RANDOM` | WARNING-3 — AUTO_RANDOM recommended for high-insert PK-only tables; MySQL Compatibility Mode if strict sequential IDs are required |
 | Updatable views (`IS_UPDATABLE='YES'`) | Views remain, but become read-only | WARNING-9 — redirect any write path through the view to the underlying table(s) |
 | Table/database names differing only by case, when source `lower_case_table_names` ≠ 2 | Rename to remove the collision — TiDB Cloud is always `lower_case_table_names=2` | BLOCKER-9 (collision) / WARNING-8 (setting mismatch, no collision) |
+| `FULLTEXT` index (any tier except Starter) | Index syntax kept (parsed, not built); TiFlash replica added so columnar scans can accelerate `LIKE`/`REGEXP` filtering in its place | WARNING-2 / HW-DDL-6 — `MATCH ... AGAINST` still needs an application-side rewrite, or an external search engine for relevance ranking |
 
 ## Table options
 
@@ -44,6 +45,15 @@ output DDL so the original text stays auditable. See
 | `SECONDARY_LOAD=...` option / `SECONDARY_LOAD`/`SECONDARY_UNLOAD` statements | HW-DDL-2 — comment out (whole statement becomes a `--` line comment); TiFlash replication is automatic once the replica is set |
 | `CLUSTERING BY (...)` | HW-DDL-3 — comment out + `TISHIFT-REVIEW` suggestion (secondary index, or clustered PK when columns are a PK prefix); needs human assessment |
 | `COMMENT 'RAPID_COLUMN=...'` | HW-DDL-4 — keep as-is (inert comment on TiDB); reported only |
-| Column-level `NOT SECONDARY` | Strip — TiFlash replicates whole tables; note excluded columns in the report |
+| `COMMENT 'RAPID_COLUMN=...'` with **no** `SECONDARY_ENGINE` clause on the table | HW-DDL-5 — table was likely RAPID-offloaded (dumps often strip table options); emit the same TiFlash replica ALTER + `TISHIFT-REVIEW` comment, flagged to confirm on the live system |
+| `FULLTEXT KEY`/`INDEX` | HW-DDL-6 — kept as-is (parsed, not built, outside Starter); emit a TiFlash replica ALTER + `TISHIFT-REVIEW` comment (WARNING-2 mapping) |
 | `ENGINE_ATTRIBUTE` / `SECONDARY_ENGINE_ATTRIBUTE` (Lakehouse) | HW-BLOCKER-1 — table data is external; materialize before export |
 | `ENCRYPTION='Y'` | Strip — TiDB Cloud encrypts at rest by default |
+
+**Not yet implemented** — column-level `NOT SECONDARY` (marks a column
+excluded from the RAPID cluster) is currently left untouched by `convert`. It
+is not valid MySQL/TiDB column syntax on its own, so a `CREATE TABLE`
+carrying it fails the post-cleanup sqlglot re-parse and `convert` exits
+non-zero; strip it manually before running convert until this lands
+(tracked as a gap alongside spatial→JSON conversion and unsupported-charset
+conversion — see `docs/convert-guide.md` § Planned).
