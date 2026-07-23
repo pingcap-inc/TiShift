@@ -2,9 +2,10 @@
 
 `tishift-heatwave scan` connects to the source, runs every collector below,
 applies the compatibility rules and readiness scoring, and prints/writes the
-result. Fully implemented and unit-tested (174 tests across
+result. Fully implemented and unit-tested (136 tests across
 `core/scan/collectors/`, `core/scan/analyzers/`, `core/scan/orchestrator.py`,
-`core/scan/report.py`, and `rules/`).
+`core/scan/report.py`, and `rules/`; run `pytest tests/test_scan -q` to
+reproduce the count).
 
 ```bash
 tishift-heatwave scan --config tishift-heatwave.yaml
@@ -39,10 +40,10 @@ dropped from the rule set.
 What it collects:
 
 - **Binlog / continue-replication readiness precheck** — `log_bin`, `binlog_format`,
-  `binlog_row_image`, `binlog_expire_logs_seconds`, `binlog_transaction_compression`
-  (plus informational `server_id`, `expire_logs_days`) via a single
-  `SHOW VARIABLES` query, validated against required values (HW-WARNING-4,
-  HW-WARNING-6..9). Implemented and tested:
+  `binlog_row_image`, `binlog_expire_logs_seconds`, `binlog_transaction_compression`,
+  `binlog_row_value_options` (plus informational `server_id`, `expire_logs_days`)
+  via a single `SHOW VARIABLES` query, validated against required values
+  (HW-WARNING-4..9). Implemented and tested:
   `core/scan/collectors/binlog.py` (query runner) +
   `core/scan/analyzers/binlog_check.py` (pure validator, `tests/test_scan/`).
   Only gates continue replication (Phase 7) — a cutover-only migration can ignore a failing result.

@@ -20,7 +20,7 @@ from dataclasses import dataclass
 class CleanupRule:
     rule_id: str
     description: str
-    risk: str  # blocker | assess | harmless
+    risk: str  # info | assess | harmless
     action_taken: str  # commented_out | commented_out_with_suggestion | kept
     auto_cleanable: str  # yes | partial | no
     pattern: re.Pattern
@@ -37,16 +37,16 @@ _VALUE = r"(?:\"[^\"]*\"|'[^']*'|`[^`]*`|\w+)"
 CLAUSE_RULES: list[CleanupRule] = [
     CleanupRule(
         rule_id="HW-DDL-1",
-        description="SECONDARY_ENGINE table option (RAPID analytics offload)",
-        risk="blocker",
+        description="SECONDARY_ENGINE table option (RAPID analytics offload — replaced by TiFlash)",
+        risk="info",
         action_taken="commented_out",
         auto_cleanable="yes",
         pattern=re.compile(rf"(?:,\s*)?\bSECONDARY_ENGINE\s*(?:=\s*)?{_VALUE}", re.I),
     ),
     CleanupRule(
         rule_id="HW-DDL-2",
-        description="SECONDARY_LOAD table option",
-        risk="blocker",
+        description="SECONDARY_LOAD table option (TiFlash replication is automatic once the replica is set)",
+        risk="info",
         action_taken="commented_out",
         auto_cleanable="yes",
         pattern=re.compile(rf"(?:,\s*)?\bSECONDARY_LOAD\s*=\s*{_VALUE}", re.I),
@@ -82,5 +82,41 @@ RAPID_COLUMN_RULE = CleanupRule(
     ),
 )
 
+# Inference rule: RAPID_COLUMN comment hints on a CREATE TABLE that has no
+# SECONDARY_ENGINE clause (common in dumps that strip table options) imply the
+# table was likely RAPID-offloaded in HeatWave. The convert engine emits a
+# TiFlash replica ALTER for such tables, flagged TISHIFT-REVIEW for
+# verification against the live system. Shares the HW-DDL-4 pattern; the
+# engine fires it once per table, not per comment.
+RAPID_HINT_RULE = CleanupRule(
+    rule_id="HW-DDL-5",
+    description=(
+        "RAPID_COLUMN comment hints without SECONDARY_ENGINE "
+        "(table likely RAPID-offloaded — TiFlash replica emitted, verify on live system)"
+    ),
+    risk="assess",
+    action_taken="tiflash_replica_emitted",
+    auto_cleanable="partial",
+    pattern=RAPID_COLUMN_RULE.pattern,
+)
+
+# Mapping rule: FULLTEXT indexes are parse-only outside Starter (WARNING-2) —
+# TiDB accepts the syntax but builds no index. The TiDB-side answer is a
+# TiFlash replica on the table: columnar scans accelerate scan-based full-text
+# filtering (LIKE / REGEXP) in place of the index. MATCH ... AGAINST queries
+# still need rewriting, so the emitted ALTER carries a TISHIFT-REVIEW note.
+# The FULLTEXT KEY clause itself is kept (harmless, parse-only).
+FULLTEXT_RULE = CleanupRule(
+    rule_id="HW-DDL-6",
+    description=(
+        "FULLTEXT index (parse-only outside Starter — TiFlash replica emitted to "
+        "accelerate scan-based full-text filtering; rewrite MATCH ... AGAINST)"
+    ),
+    risk="assess",
+    action_taken="tiflash_replica_emitted",
+    auto_cleanable="partial",
+    pattern=re.compile(r"\bFULLTEXT\s+(?:KEY|INDEX)\b", re.I),
+)
+
 # Canonical rule list for report rendering (HW-DDL-2 listed once).
-ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE]
+ALL_RULES: list[CleanupRule] = [*CLAUSE_RULES, RAPID_COLUMN_RULE, RAPID_HINT_RULE, FULLTEXT_RULE]

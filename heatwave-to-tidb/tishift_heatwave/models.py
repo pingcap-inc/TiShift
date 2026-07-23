@@ -216,6 +216,12 @@ class DDLCleanupResult:
     sql: str = ""
     findings: list[CleanupFinding] = field(default_factory=list)
     rapid_tables: list[str] = field(default_factory=list)
+    # Tables with RAPID_COLUMN comment hints but no SECONDARY_ENGINE clause
+    # (HW-DDL-5) — likely RAPID-offloaded, needs verification on the live system.
+    rapid_hint_tables: list[str] = field(default_factory=list)
+    # Tables with a FULLTEXT index (HW-DDL-6) — parse-only outside Starter;
+    # a TiFlash replica stands in for the missing index (scan-based filtering).
+    fulltext_tables: list[str] = field(default_factory=list)
     tiflash_statements: list[str] = field(default_factory=list)
     parse_errors: list[str] = field(default_factory=list)
 

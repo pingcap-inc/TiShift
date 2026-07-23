@@ -37,7 +37,7 @@ The non-HW rules are sourced from
 
 | ID | Condition | Feature | Action |
 |----|-----------|---------|--------|
-| WARNING-2 | `has_fulltext_indexes = TRUE` AND target tier != starter | FULLTEXT indexes — real index support is Starter-only (and region-limited); Essential, Dedicated, and self-hosted only parse the syntax, they don't index | Starter: confirm your region supports FULLTEXT indexes. Essential/Dedicated/self-hosted: use Elasticsearch/Meilisearch, or TiDB's native full-text/vector search as a replacement, not a drop-in index |
+| WARNING-2 | `has_fulltext_indexes = TRUE` AND target tier != starter | FULLTEXT indexes — real index support is Starter-only (and region-limited); Essential, Dedicated, and self-hosted only parse the syntax, they don't index | Starter: confirm your region supports FULLTEXT indexes. Essential/Dedicated/self-hosted: add a TiFlash replica on the table — columnar scans accelerate scan-based full-text filtering (LIKE/REGEXP) in place of the index (convert emits this automatically, rule HW-DDL-6); rewrite `MATCH ... AGAINST` queries, or use Elasticsearch/Meilisearch when relevance-ranked search is required |
 | WARNING-3 | `auto_increment_table_count > 0` | AUTO_INCREMENT — unique but NOT sequential | Each TiDB node allocates ID ranges independently; consider AUTO_RANDOM for high-insert tables, or MySQL Compatibility Mode if the application truly needs sequential IDs (throughput cost) |
 | WARNING-4 | `unsupported_collation_count > 0` | utf8mb4_0900_* collations (MySQL 8 default) | Maps 1:1 — utf8mb4_0900_* supported natively since TiDB v7.4 (target TiDB Cloud is v8.5). Informational only; no readiness-score impact |
 | WARNING-5 | GET_LOCK usage detected | GET_LOCK/RELEASE_LOCK — limited implementation | Test advisory locking behavior; consider Redis-based locks |
@@ -55,7 +55,7 @@ The non-HW rules are sourced from
 | HW-WARNING-8 | `binlog_row_image != 'FULL'` and continue replication planned | Partial row images are unsafe for conflict resolution | Set `binlog_row_image = FULL` before starting sync |
 | HW-WARNING-9 | `binlog_transaction_compression != 'OFF'` and continue replication planned | DM does not support transaction compression | `SET GLOBAL binlog_transaction_compression = 'OFF';` before starting sync |
 
-Checked together via one `SHOW VARIABLES` query (`tishift_heatwave/rules/binlog_check.py`); `server_id` and `expire_logs_days` are collected by the same query but reported informationally only (no hard required value) — `server_id = 0` disables binary logging entirely, and `expire_logs_days` is the legacy pre-8.0 retention setting superseded by `binlog_expire_logs_seconds`.
+HW-WARNING-4..9 are checked together via one `SHOW VARIABLES` query (`tishift_heatwave/rules/binlog_check.py` — including `binlog_row_value_options` for HW-WARNING-5); `server_id` and `expire_logs_days` are collected by the same query but reported informationally only (no hard required value) — `server_id = 0` disables binary logging entirely, and `expire_logs_days` is the legacy pre-8.0 retention setting superseded by `binlog_expire_logs_seconds`.
 
 ## DDL cleanup rules (convert phase)
 
@@ -67,10 +67,12 @@ cleaned clauses become `/* TISHIFT-REMOVED [rule-id]: <original> */` comments
 
 | ID | Syntax | Risk | Handling | Auto-cleanable |
 |----|--------|------|----------|----------------|
-| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔴 blocker | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the CREATE TABLE (HW-WARNING-1 mapping) | ✅ yes |
-| HW-DDL-2 | `SECONDARY_LOAD=...` option, `ALTER ... SECONDARY_LOAD/UNLOAD` statements | 🔴 blocker | Comment out (statements become `--` line comments) | ✅ yes |
+| HW-DDL-1 | `SECONDARY_ENGINE=RAPID` | 🔵 info | Comment out; emit `ALTER TABLE ... SET TIFLASH REPLICA n` right after the CREATE TABLE (HW-WARNING-1 mapping). Info, not a blocker: TiFlash fully replaces the RAPID offload | ✅ yes |
+| HW-DDL-2 | `SECONDARY_LOAD=...` option, `ALTER ... SECONDARY_LOAD/UNLOAD` statements | 🔵 info | Comment out (statements become `--` line comments). Info, not a blocker: TiFlash replication is automatic once the replica is set — no load step exists to port | ✅ yes |
 | HW-DDL-3 | `CLUSTERING BY (...)` | 🟠 needs assessment | Comment out + `TISHIFT-REVIEW` alternative suggestion; goes on the manual-review checklist | ⚠️ partial |
 | HW-DDL-4 | `COMMENT 'RAPID_COLUMN=...'` | 🟢 harmless | Keep as-is; reported as informational | ❌ not needed |
+| HW-DDL-5 | RAPID_COLUMN comment hints on a CREATE TABLE with **no** SECONDARY_ENGINE clause | 🟠 needs assessment | Table was likely RAPID-offloaded (dumps often strip table options) — emit `ALTER TABLE ... SET TIFLASH REPLICA n` after the CREATE TABLE plus a `TISHIFT-REVIEW` comment; verify offload status on the live system and drop the replica if analytics is not needed. Tables that do carry SECONDARY_ENGINE are handled by HW-DDL-1 and never double-fire this rule | ⚠️ partial |
+| HW-DDL-6 | `FULLTEXT KEY/INDEX` in a CREATE TABLE (WARNING-2 mapping) | 🟠 needs assessment | FULLTEXT indexes are parse-only outside Starter — emit `ALTER TABLE ... SET TIFLASH REPLICA n` after the CREATE TABLE plus a `TISHIFT-REVIEW` comment: columnar scans accelerate scan-based full-text filtering (LIKE/REGEXP) in place of the index. The FULLTEXT clause itself is kept (harmless). `MATCH ... AGAINST` queries must be rewritten; use an external search engine when relevance ranking is required. One ALTER per table even when HW-DDL-5 also fires | ⚠️ partial |
 
 ## COMPATIBLE — no changes needed
 

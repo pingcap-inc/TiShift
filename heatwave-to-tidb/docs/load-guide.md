@@ -1,14 +1,14 @@
 # Load Guide
 
-**Status: not implemented yet.** `tishift-heatwave load` currently prints a
-pointer to this guide and exits non-zero (2) — see `_not_implemented` in
-`tishift_heatwave/cli.py`. Run the steps below manually (or via the AI skill,
-which issues them one command at a time) until the command is automated.
+**Status: intentionally disabled.** Data loading is a high-stakes step that
+this tool deliberately does not handle — you must run it yourself,
+independently of the tool and the AI skill. `tishift-heatwave load` prints a
+notice to that effect and exits non-zero (2), and the skill's Phase 5 will
+not walk you through these commands either. Run the steps below manually,
+following your organization's change-control process.
 
-Once implemented, `tishift-heatwave load` will transfer data using the
-strategy matrix in `references/load-strategies.md`.
-
-`--strategy auto` picks by target tier and data size:
+The strategy matrix in `references/load-strategies.md` picks by target tier
+and data size:
 
 | Tier | Export | Import |
 |---|---|---|
@@ -18,8 +18,9 @@ strategy matrix in `references/load-strategies.md`.
 
 Notes:
 
-- Export runs over the MySQL protocol through your SSH tunnel/bastion —
-  HeatWave DB Systems have no public endpoint and AWS DMS does not apply.
+- Export runs over the MySQL protocol — directly against the public TLS
+  endpoint when the DB System has public accessibility enabled, otherwise
+  through your SSH tunnel/bastion. AWS DMS does not apply to OCI-hosted sources.
 - `ML_SCHEMA_%` schemas and Lakehouse tables are always excluded.
 - `FLUSH TABLES WITH READ LOCK` is restricted on HeatWave; Dumpling falls back
   to per-table locking. Schedule the export during low traffic, or use continue replication

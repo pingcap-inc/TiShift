@@ -2,7 +2,7 @@
 name: heatwave-to-tidb-migration
 description: Migrate MySQL HeatWave databases to TiDB — assess readiness, convert schema, load data, and validate. Use this skill whenever someone mentions migrating from MySQL HeatWave, Oracle MySQL Database Service, or OCI MySQL to TiDB, wants to assess HeatWave compatibility with TiDB, needs to map HeatWave analytics (RAPID) to TiFlash, or is planning any HeatWave to TiDB migration project, even if they don't use the word "migration" explicitly.
 metadata:
-  version: 0.1.0
+  version: 0.2.0
 ---
 
 # MySQL HeatWave to TiDB Migration
@@ -15,6 +15,8 @@ HeatWave is MySQL 8.0/8.4/9.x under the hood, so core compatibility with TiDB is
 
 ## How to use this skill
 
+**Config-file mode (preferred):** if a filled-in config exists (`config/tishift-heatwave.yaml` or `tishift-heatwave.yaml`, gitignored), read connection details from it and drive the phases directly — run `tishift-heatwave scan/convert --config <file>` and execute the per-phase queries yourself over TLS — instead of asking the user to run commands and paste output. When Phase 7 continue replication is planned (or the tier is Essential/Dedicated and the user hasn't ruled it out), pass `--continue-replication` to `scan` so the binlog rules count against the score and the valid-indexes precheck (Step 7.1) runs. Confirm the config file is gitignored before proceeding, and never echo its passwords into commands or chat. The call-and-response flow below is the fallback when no config file exists.
+
 When the user provides database credentials, start Phase 1 immediately. Output one command, say "Run this and paste the output," and wait. Don't summarize all phases upfront or explain what you'll do — just execute.
 
 **Security note:** Passwords on the command line are visible in shell history and process listings. Before starting, ask the user to set environment variables for credentials so passwords never appear in commands:
@@ -26,8 +28,9 @@ Both endpoints speak MySQL protocol. For source commands, use `--password="$SRC_
 
 When pasting output back, remind the user to paste only the query results, not the command itself — this avoids credentials appearing in conversation history.
 
-**IMPORTANT — network path:** HeatWave DB Systems have no public endpoint; they are only reachable inside their VCN. Before Phase 1, confirm how the user reaches the DB System:
-- SSH tunnel through an OCI Bastion session or a compute jump host: `ssh -f -N -L 3306:<db-system-private-ip>:3306 opc@<bastion>` then connect to `127.0.0.1:3306`
+**IMPORTANT — network path:** Before Phase 1, confirm how the user reaches the DB System:
+- Public endpoint (DB Systems with public accessibility enabled, e.g. `*.dbsystem.<region>.aws.cloud.mysql.com` or OCI "Networking Accessibility: Public"): connect directly over TLS; the client IP must be within the allowed public IP ranges
+- SSH tunnel through an OCI Bastion session or a compute jump host (VCN-private DB Systems): `ssh -f -N -L 3306:<db-system-private-ip>:3306 opc@<bastion>` then connect to `127.0.0.1:3306`
 - Site-to-site VPN / FastConnect: connect to the private IP directly
 
 **Command format for HeatWave (source):**
@@ -43,6 +46,8 @@ mysql --ssl-mode=VERIFY_IDENTITY -h $TARGET_HOST -P 4000 -u $TARGET_USER -e "SQL
 Substitute the user's actual values for `$SRC_HOST`, `$SRC_USER`, etc. Output one command per step — never combine queries. `$DB` below is the database (schema) the user wants to migrate.
 
 **Always display the full generated report.** Phase 3 (scan) and Phase 4 (convert) each produce a report — either written to disk (`tishift-reports/tishift-heatwave-report.md`, `tishift-reports/ddl-cleanup-report.md`) if you ran the `tishift-heatwave` CLI directly, or assembled by you from the manual query results if the user is pasting output back per the step-by-step flow above. Either way, once that phase's report is complete, print its full contents in the chat as your last message for that phase — read the file back and echo it (or write out the complete assembled report) rather than a bullet-point paraphrase. The user should have the whole report sitting in the conversation, not just your summary of it.
+
+**When asked for a consolidated/final report, list every check item, not just the ones that fired.** The CLI's `.md`/CLI-text output omits zero-hit rules to stay short (the JSON report keeps the full set — see `tishift-reports/*-report.json`). If the user asks to review the full process, don't just re-paste the summary: enumerate every rule in `references/compatibility-rules.md` (all BLOCKER-\*/WARNING-\*/HW-\*/HW-DDL-\* IDs) against what actually fired, and call out explicitly which ones are backed by a real collector (schema/inventory-based) versus which rely on query-log analysis this tool doesn't implement yet (BLOCKER-5/6/7, WARNING-5/6/7, HW-WARNING-3 — these default to "not detected," which is not the same as "confirmed clear"). Presenting "0 blockers" without that distinction overstates how much was actually verified.
 
 ---
 
@@ -95,7 +100,8 @@ Collect schema inventory and HeatWave feature usage. Run all steps — each as a
 mysql -h $SRC_HOST -P 3306 -u $SRC_USER --password="$SRC_PWD" -e "
 SHOW VARIABLES WHERE Variable_name IN
 ('log_bin','server_id','binlog_format','binlog_row_image',
-'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression')"
+'binlog_expire_logs_seconds','expire_logs_days','binlog_transaction_compression',
+'binlog_row_value_options')"
 ```
 
 Only matters if continue replication (Phase 7) is planned — a cutover-only migration can ignore this. Evaluate each row against:
@@ -107,17 +113,18 @@ Only matters if continue replication (Phase 7) is planned — a cutover-only mig
 | `binlog_row_image` | FULL | Includes all column values in events for safe conflict resolution |
 | `binlog_expire_logs_seconds` | ≥ 86400 (1 day, hard minimum), 604800 (7 days, recommended) | Ensures DM can access consecutive logs during migration |
 | `binlog_transaction_compression` | OFF | DM does not support transaction compression |
+| `binlog_row_value_options` | `''` (empty, not PARTIAL_JSON) | DM cannot parse partial-JSON binlog rows — PARTIAL_JSON causes silent replication corruption on JSON columns. Clear with `SET GLOBAL binlog_row_value_options = '';` (this invalidates any binlog position captured before the change) |
 
-`server_id` and `expire_logs_days` are returned by the same query but have no required value — just check `server_id` is non-zero (0 disables binary logging entirely, a silent failure mode) and note `expire_logs_days` is a legacy pre-8.0 setting normally showing 0 on HeatWave (superseded by `binlog_expire_logs_seconds`). This whole check is implemented and unit-tested: `tishift_heatwave/core/scan/analyzers/binlog_check.py` (rule IDs HW-WARNING-4, HW-WARNING-6..9).
+`server_id` and `expire_logs_days` are returned by the same query but have no required value — just check `server_id` is non-zero (0 disables binary logging entirely, a silent failure mode) and note `expire_logs_days` is a legacy pre-8.0 setting normally showing 0 on HeatWave (superseded by `binlog_expire_logs_seconds`). This whole check is implemented and unit-tested: `tishift_heatwave/core/scan/analyzers/binlog_check.py` (rule IDs HW-WARNING-4..9).
 
 **Step 2.1b — Other server settings:**
 ```
 mysql -h $SRC_HOST -P 3306 -u $SRC_USER --password="$SRC_PWD" -e "
-SELECT @@binlog_row_value_options, @@gtid_mode, @@character_set_server,
+SELECT @@gtid_mode, @@character_set_server,
        @@collation_server, @@sql_mode, @@lower_case_table_names, @@transaction_isolation"
 ```
 
-Record for the assessment: TiDB Cloud only supports `lower_case_table_names = 2`; if the source is 0 or 1, flag WARNING-8 (and check the table list from Step 2.2 for any names that only differ by case — that's BLOCKER-9, not just a warning, since TiDB can't represent both). Note the default collation. If `binlog_row_value_options = 'PARTIAL_JSON'` and continue replication is planned, flag HW-WARNING-5 now — it must be cleared before Phase 7 starts (`SET GLOBAL binlog_row_value_options = '';`), and clearing it invalidates any binlog position captured before the change.
+Record for the assessment: TiDB Cloud only supports `lower_case_table_names = 2`; if the source is 0 or 1, flag WARNING-8 (and check the table list from Step 2.2 for any names that only differ by case — that's BLOCKER-9, not just a warning, since TiDB can't represent both). Note the default collation. (`binlog_row_value_options` is gated by the Step 2.1a precheck — rule HW-WARNING-5.)
 
 **Step 2.2 — Tables and sizes:**
 ```
@@ -231,11 +238,14 @@ mysql -h $SRC_HOST -P 3306 -u $SRC_USER --password="$SRC_PWD" --raw -e "SHOW CRE
 ```sql
 ALTER TABLE $DB.<table> SET TIFLASH REPLICA 2;
 ```
+Tables whose columns carry `COMMENT 'RAPID_COLUMN=...'` hints but whose DDL has no `SECONDARY_ENGINE` clause (common when a dump tool strips table options) get the same replica statement plus a `TISHIFT-REVIEW [HW-DDL-5]` comment — they were likely RAPID-offloaded, but confirm against the live system (Step 2.3) and drop the replica if analytics offload isn't needed.
+
+Tables with a `FULLTEXT` index also get a replica statement plus a `TISHIFT-REVIEW [HW-DDL-6]` comment (WARNING-2 mapping): FULLTEXT is parse-only outside Starter, and the TiFlash replica accelerates scan-based full-text filtering (`LIKE`/`REGEXP`) on the column in place of the index. `MATCH ... AGAINST` queries must be rewritten; point the user at an external search engine when relevance-ranked search is required. One ALTER per table even when several rules fire.
 Trade-off to tell the user: because the replica exists before data load, TiFlash replicates during the import, which slows large loads — if import speed matters, they can remove the ALTERs from the schema file and run them after the load instead.
 
 **Step 4.4 — Code stubs:** For each stored procedure, trigger, event, and JS routine, generate an application-code stub in the user's preferred language and list them as post-migration work.
 
-**Step 4.5 — Apply DDL to target** and verify with `SHOW TABLES` / `SHOW CREATE TABLE` on TiDB.
+**Step 4.5 — Apply DDL to target** and verify with `SHOW TABLES` / `SHOW CREATE TABLE` on TiDB. Extracting each table's DDL independently (Step 4.1) does not preserve FK dependency order — applying the concatenated file straight through can fail partway with `ERROR 1824: Failed to open the referenced table '<parent>'` if a child table's `CREATE TABLE` lands before its parent's. Wrap the apply in `SET FOREIGN_KEY_CHECKS=0; ... SET FOREIGN_KEY_CHECKS=1;` rather than hand-reordering the file. If an earlier attempt partially applied before failing, drop the tables it did create before re-applying — don't leave a half-created schema.
 
 If you ran `tishift-heatwave convert` to do Step 4.2.1, read back `tishift-reports/ddl-cleanup-report.md` and display its complete contents in the chat before moving on — the rule-summary table, findings, manual-review items, and any parse errors, not just a count of hits.
 
@@ -243,13 +253,15 @@ If you ran `tishift-heatwave convert` to do Step 4.2.1, read back `tishift-repor
 
 ---
 
-## Phase 5: Load Data
+## Phase 5: Load Data — NOT handled by this skill
 
-Consult `references/load-strategies.md` and pick by tier. Default: Dumpling export through the SSH tunnel, then tier-appropriate import (`ticloud serverless import` for Starter, direct load for Essential, Lightning for Dedicated).
+**This phase is deliberately disabled.** Data loading is too high-stakes to delegate to this tool — the user must perform it independently, outside this skill. Do not generate, run, or walk the user through export/import commands, and do not invoke `tishift-heatwave load` (it exits with an error by design).
 
-Always exclude `ML_SCHEMA_%` schemas and Lakehouse tables from the export filter.
+When you reach this phase, tell the user:
 
-**Gate:** Import completes without errors; spot-check a few tables with `SELECT COUNT(*)`.
+> Data loading is intentionally not handled by this skill. Please complete the export and import yourself, following your organization's change-control process. `docs/load-guide.md` and `references/load-strategies.md` document the recommended manual path (Dumpling export through the SSH tunnel, then tier-appropriate import: `ticloud serverless import` for Starter, direct load for Essential, Lightning for Dedicated). Remember to exclude `ML_SCHEMA_%` schemas and Lakehouse tables from the export filter. Let me know once the load has completed so we can continue with validation.
+
+**Gate:** The user confirms they have completed the data load independently and the import finished without errors. Only then proceed to Phase 6.
 
 ---
 
@@ -282,11 +294,13 @@ Starter is cutover-only — skip to the cutover checklist.
 - `log_bin=ON`, `binlog_format=ROW`, `binlog_row_image=FULL`, `binlog_transaction_compression=OFF`, `gtid_mode=ON`
 - `binlog_expire_logs_seconds ≥ 86400` (1 day, hard minimum) — `≥ 604800` (7 days) recommended
 - Migration user holds the grants below
-- `binlog_row_value_options` must be empty. If Step 2.1b found `PARTIAL_JSON`, disable it now:
+- `binlog_row_value_options` must be empty (HW-WARNING-5, gated by the Step 2.1a precheck). If it showed `PARTIAL_JSON`, disable it now:
   ```
   mysql -h $SRC_HOST -P 3306 -u $SRC_USER --password="$SRC_PWD" -e "SET GLOBAL binlog_row_value_options = '';"
   ```
-  DM cannot parse binlog rows written under partial-JSON mode; leaving it set causes silent replication corruption on JSON columns, not a clean failure. Run this before creating the DM task, and re-run Step 2.1b to confirm it took effect.
+  DM cannot parse binlog rows written under partial-JSON mode; leaving it set causes silent replication corruption on JSON columns, not a clean failure. Run this before creating the DM task, and re-run Step 2.1a to confirm it took effect.
+
+  **This `SET GLOBAL` frequently fails on OCI-managed HeatWave DB Systems** — even accounts with broad DDL/DML grants typically lack `SUPER`/`SYSTEM_VARIABLES_ADMIN`, so both this and the `binlog_expire_logs_seconds` fix return `ERROR 1227 (42000): Access denied; you need (at least one of) the SUPER or SYSTEM_VARIABLES_ADMIN privilege(s)`. When that happens, these are DB System configuration parameters, not SQL-settable — the user needs to change them via **OCI Console → DB System → Configuration**, not `SET GLOBAL`. Re-run Step 2.1a (or `scan --continue-replication`) afterward to confirm the change took effect.
 - Source TLS is mandatory — DM's source connection needs the HeatWave CA certificate, same as scan/load (Step 1.1)
 
 HeatWave supports outbound replication, so TiDB DM can attach as a replica through the same network path used for scan/load.
@@ -329,7 +343,7 @@ WHERE
     AND t.table_schema NOT LIKE 'ML\_SCHEMA\_%'
     AND t.table_type = 'BASE TABLE';
 ```
-Any row returned is a business table with no PK/UNIQUE index — add one before starting sync, or exclude the table and document why it's safe to skip.
+Any row returned is a business table with no PK/UNIQUE index — add one before starting sync, or exclude the table and document why it's safe to skip. (Automated: `tishift-heatwave scan --continue-replication` runs this same query during Phase 2 and reports "Tables without a valid index" — registry `tishift_heatwave/rules/valid_indexes.py`.)
 
 **Step 7.2 — Scope the DM task to business schemas only.** When creating the task in the TiDB Cloud console, do **not** select "All Objects" — use an explicit `block-allow-list` naming the business schema(s) being migrated (the `$DB` used throughout this skill) and excluding HeatWave/MySQL system and management schemas:
 ```yaml
@@ -339,6 +353,12 @@ block-allow-list:
     ignore-dbs: ["mysql_autopilot", "mysql_audit", "mysql_tasks"]
 ```
 Also exclude standard MySQL system schemas (`mysql`, `sys`, `performance_schema`, `information_schema`) and any `ML_SCHEMA_%` AutoML schemas (HW-BLOCKER-2) from `do-dbs`. Selecting "All Objects" instead of an explicit list either fails outright on these schemas or pulls in objects with no place on the target.
+
+**This scoping is database-level only** — `do-dbs`/`ignore-dbs` can't exclude a single table within an in-scope database. If Phase 4's schema-convert deliberately left a table out of migration scope (e.g. a smoke-test table), DM will still replicate it alongside everything else in that database once the task starts, auto-creating it on the target with TiDB-native DDL. This is usually harmless if the table is empty or irrelevant, but it's schema drift the tool didn't originate and Phase 6's validation won't catch it unless you diff the *full* table list on both sides (not just the tables you converted) — do that once after the DM task is running. If it matters, ask about a dedicated migration schema instead, or budget for a manual `DROP TABLE` on the target after sync stabilizes.
+
+DM task creation itself is TiDB Cloud **Console-only** for Essential/Dedicated tiers — the `ticloud` CLI only manages Serverless clusters (`ticloud serverless ...`), it has no Essential/Dedicated DM task commands. Give the user the block-allow-list above and the grants from Step 7.0 to paste into the Console form; don't expect to script this step.
+
+**Optional — validate the DM task before trusting it for cutover.** Once the task is running, insert a small batch of clearly-tagged synthetic rows into the source in FK-safe order (parents before children — e.g. categories/customers/products before orders before order_items) using a prefix like `TISHIFT_TEST_` on name columns and `TT-*` on unique codes, so they're trivially identifiable. Re-run the Phase 6 row-count and checksum checks to confirm the DM task actually replicated them correctly — matching row counts alone isn't sufficient proof, checksums confirm content, not just totals. Delete the tagged rows from both sides once satisfied; never leave synthetic data in place through a real cutover.
 
 **Step 7.3 — FK precheck warnings are expected, not blocking.** TiDB Cloud DM's precheck reports foreign-key warnings for this source; migrations proceed and replicate successfully with these warnings present. Before dismissing them, work through the **FK Pre-upgrade Checklist**:
 - [ ] All FK-related parent and child tables are included in the task
@@ -354,3 +374,9 @@ If any item is unchecked, resolve it before proceeding — the FK warning itself
 Set up a DM task with the HeatWave endpoint as source (users from Step 7.0, scoped per Step 7.2), monitor lag until it approaches zero, then cut over: stop writes on HeatWave, wait for lag = 0, repoint the application to TiDB, keep HeatWave read-only for the rollback window.
 
 **Cutover checklist (all tiers):** application connection strings updated; stored-procedure/trigger/event replacements deployed; analytics queries verified against TiFlash; every business table has a valid index (Step 7.1); FK Pre-upgrade Checklist items all checked; PingCAP notified of the window; rollback window agreed.
+
+**Executing cutover is the user's call, not this skill's.** This skill's job ends at a created, verified, healthy DM task (grants confirmed, valid-indexes precheck passed, FK checklist confirmed, sync spot-checked). Present the cutover checklist above as reference, but don't offer to run the stop-writes/repoint/monitor sequence yourself — that decision and its execution belong to the user or their TiDB account team, same as Phase 5's load is deliberately left to the user rather than automated.
+
+### Non-destructive re-verification
+
+If the user asks to "rerun" or independently re-confirm the migration after a DM task already exists, do **not** drop or recreate the target schema to do it — that would very likely break the running DM task, which can only be recreated via the Console (Step 7.2), not by this skill. Instead, re-run the read-only/idempotent parts against current live state: Phase 1 connectivity, `scan --continue-replication` (Phase 2/3), `convert --dry-run` (Phase 4, to confirm the applied DDL hasn't drifted from what the current source DDL would produce), Phase 6's validation queries, and Phase 7's grants/valid-indexes/checksum re-checks. Only fall back to a destructive rebuild if the user explicitly confirms they understand it will likely require recreating the DM task afterward.

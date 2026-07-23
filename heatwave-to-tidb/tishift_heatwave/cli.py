@@ -140,11 +140,11 @@ def scan(
     help="SQL file with CREATE TABLE statements (SHOW CREATE TABLE / mysqldump output).",
 )
 @click.option("--scan-report", default=None, help="Path to scan report JSON (not yet implemented).")
+@click.option("--config", default="tishift-heatwave.yaml", help="Path to config file (source of --tier when omitted).")
 @click.option(
     "--tier",
-    default="starter",
-    show_default=True,
-    help="Target TiDB tier: starter, essential, dedicated, self-hosted.",
+    default=None,
+    help="Target TiDB tier: starter, essential, dedicated, self-hosted (default: target.tier from --config).",
 )
 @click.option(
     "--tiflash-replicas",
@@ -157,7 +157,8 @@ def scan(
 def convert(
     ddl_file: str | None,
     scan_report: str | None,
-    tier: str,
+    config: str,
+    tier: str | None,
     tiflash_replicas: int,
     dry_run: bool,
     output_dir: str,
@@ -179,6 +180,9 @@ def convert(
         raise click.UsageError(
             "--ddl-file is required (scan-report-driven convert is not yet implemented)."
         )
+
+    if tier is None:
+        tier = _load_config_or_fail(config).target.tier
 
     original = Path(ddl_file).read_text()
     result = transform_schema(original, tier=tier, tiflash_replicas=tiflash_replicas)
@@ -203,9 +207,18 @@ def convert(
         click.echo(f"Wrote {md_path}")
 
     click.echo("")
-    for rule_id, s in report["summary"].items():
+    # Zero-hit rules are hidden while any rule matched; if nothing matched,
+    # all rules are listed (0 hits) so the output shows what was checked.
+    summary = report["summary"]
+    display = {rid: s for rid, s in summary.items() if s["count"]} or summary
+    for rule_id, s in display.items():
         click.echo(f"{rule_id}: {s['count']} hit(s) — {s['description']}")
-    click.echo(f"RAPID tables: {len(result.rapid_tables)}; TiFlash statements emitted: {len(result.tiflash_statements)}")
+    click.echo(
+        f"RAPID tables: {len(result.rapid_tables)}; "
+        f"hint-flagged tables (HW-DDL-5): {len(result.rapid_hint_tables)}; "
+        f"FULLTEXT tables (HW-DDL-6): {len(result.fulltext_tables)}; "
+        f"TiFlash statements emitted: {len(result.tiflash_statements)}"
+    )
     review_count = sum(1 for f in result.findings if f.risk == "assess")
     if review_count:
         click.echo(f"⚠️  {review_count} finding(s) need manual review (see report).")
@@ -233,12 +246,18 @@ def _not_implemented(command: str, guide: str) -> None:
     help="Load strategy: auto, direct, ticloud, lightning.",
 )
 def load(config: str, strategy: str) -> None:
-    """Load data from HeatWave to TiDB (Dumpling export over MySQL protocol).
+    """Load data from HeatWave to TiDB — intentionally disabled.
 
-    Not implemented yet — docs/load-guide.md covers the manual path (Dumpling
-    export, then tier-appropriate import).
+    Data loading is deliberately excluded from this tool: it is a high-stakes
+    step that must be performed independently by the user. docs/load-guide.md
+    covers the manual path (Dumpling export, then tier-appropriate import).
     """
-    _not_implemented("load", "docs/load-guide.md")
+    click.echo(
+        "tishift-heatwave load is intentionally disabled — data loading is a "
+        "high-stakes step this tool does not handle. Complete it independently "
+        "by following docs/load-guide.md."
+    )
+    raise SystemExit(2)
 
 
 @main.command()

@@ -35,21 +35,11 @@ target:
   database: myapp
   tls: true
   # ssl_ca: /etc/ssl/cert.pem   # TiDB Cloud Starter/Essential: ISRG Root X1 (system CA bundle)
-  # TiDB Cloud tier: starter (default), essential, dedicated, or self-hosted
-  # Starter: free up to 25 GiB, import via ticloud CLI, cutover only (no continue replication)
+  # TiDB Cloud tier: starter, essential (default), dedicated, or self-hosted
+  # Starter: free up to 25 GiB, cutover only (no continue replication)
   # Essential: autoscaling, Changefeeds, DM-based continue replication from HeatWave binlog
   # Dedicated: full HTAP (TiFlash), Lightning, DM, PCI-DSS, SOC 2
-  tier: starter
-
-# TiDB Cloud settings (required for Starter/Essential ticloud CLI import)
-cloud:
-  cluster_id: ${TIDB_CLOUD_CLUSTER_ID}
-  project_id: ${TIDB_CLOUD_PROJECT_ID}
-
-ai:
-  provider: none   # openai or none
-  api_key: ${TISHIFT_AI_API_KEY}
-  model: ""         # e.g., gpt-4o
+  tier: essential
 
 output:
   dir: ./tishift-reports

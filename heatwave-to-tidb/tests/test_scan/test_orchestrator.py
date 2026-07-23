@@ -21,6 +21,7 @@ BINLOG_RESPONSES = [
             {"Variable_name": "binlog_expire_logs_seconds", "Value": "604800"},
             {"Variable_name": "expire_logs_days", "Value": "0"},
             {"Variable_name": "binlog_transaction_compression", "Value": "OFF"},
+            {"Variable_name": "binlog_row_value_options", "Value": ""},
         ],
     )
 ]

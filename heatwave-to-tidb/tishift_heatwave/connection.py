@@ -19,8 +19,9 @@ logger = logging.getLogger(__name__)
 def connect_source(config: SourceConfig, read_only: bool = True) -> pymysql.Connection:
     """Connect to a MySQL HeatWave source DB System.
 
-    OCI DB Systems are only reachable inside their VCN (SSH tunnel or jump
-    host); HeatWave on AWS exposes a public endpoint. Either way TLS is
+    DB Systems with public accessibility enabled (HeatWave on AWS, or OCI
+    "Networking Accessibility: Public") are reached directly; VCN-private
+    ones need an SSH tunnel or jump host. Either way TLS is
     mandatory and the service CA is self-signed, so verification needs the
     CA certificate (config.ssl_ca). Enforces read-only at the session level
     so scan can never mutate the source.

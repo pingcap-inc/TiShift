@@ -25,9 +25,6 @@ target:
   database: testdb
   tls: true
   tier: starter
-
-ai:
-  provider: none
 """
     config_file = tmp_path / "tishift-heatwave.yaml"
     config_file.write_text(config_content)

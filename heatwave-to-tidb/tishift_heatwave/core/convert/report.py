@@ -11,7 +11,7 @@ from tishift_heatwave.models import DDLCleanupResult
 from tishift_heatwave.rules.ddl_cleanup import ALL_RULES
 
 _RISK_BADGE = {
-    "blocker": "🔴 blocker",
+    "info": "🔵 info",
     "assess": "🟠 needs assessment",
     "harmless": "🟢 harmless",
 }
@@ -40,6 +40,8 @@ def build_report(
         },
         "findings": [asdict(f) for f in result.findings],
         "rapid_tables": result.rapid_tables,
+        "rapid_hint_tables": result.rapid_hint_tables,
+        "fulltext_tables": result.fulltext_tables,
         "tiflash_statements": result.tiflash_statements,
         "parse_errors": result.parse_errors,
         "notes": [
@@ -60,10 +62,14 @@ def render_markdown(report: dict) -> str:
         "",
         "## Rule summary",
         "",
-        "| Rule | Syntax | Risk | Auto-cleanable | Hits |",
-        "|---|---|---|---|---|",
     ]
-    for rule_id, s in report["summary"].items():
+    # Rules with zero hits are omitted while any rule matched; when nothing
+    # matched at all, every rule is shown (0 hits) as evidence of what was
+    # checked. The JSON report always keeps the full rule set.
+    hit_rules = {rid: s for rid, s in report["summary"].items() if s["count"]}
+    display_rules = hit_rules or report["summary"]
+    lines += ["| Rule | Syntax | Risk | Auto-cleanable | Hits |", "|---|---|---|---|---|"]
+    for rule_id, s in display_rules.items():
         lines.append(
             f"| {rule_id} | {s['description']} | {_RISK_BADGE[s['risk']]} "
             f"| {_AUTO_BADGE[s['auto_cleanable']]} | {s['count']} |"
@@ -91,16 +97,32 @@ def render_markdown(report: dict) -> str:
         lines.append("Nothing to review.")
 
     lines += ["", "## TiFlash replicas", ""]
+    hint_tables = report.get("rapid_hint_tables", [])
+    fulltext_tables = report.get("fulltext_tables", [])
     if report["tiflash_statements"]:
         lines += ["```sql", *report["tiflash_statements"], "```"]
-    elif report["rapid_tables"]:
+    elif report["rapid_tables"] or hint_tables or fulltext_tables:
         lines.append(
-            "RAPID tables detected but no replica statements emitted "
-            f"(replicas={report['tiflash_replicas']}) — "
+            "RAPID (or hint/FULLTEXT-flagged) tables detected but no replica statements "
+            f"emitted (replicas={report['tiflash_replicas']}) — "
             "see TISHIFT-INFO comments in the output SQL."
         )
     else:
         lines.append("No RAPID-offloaded tables detected.")
+    if hint_tables:
+        lines += [
+            "",
+            "Hint-derived tables (HW-DDL-5: RAPID_COLUMN comments without "
+            "SECONDARY_ENGINE — verify RAPID offload status on the live system): "
+            + ", ".join(f"`{t}`" for t in hint_tables),
+        ]
+    if fulltext_tables:
+        lines += [
+            "",
+            "FULLTEXT-index tables (HW-DDL-6: parse-only outside Starter — the TiFlash "
+            "replica accelerates scan-based full-text filtering; rewrite "
+            "MATCH ... AGAINST queries): " + ", ".join(f"`{t}`" for t in fulltext_tables),
+        ]
 
     if report["parse_errors"]:
         lines += ["", "## Parse errors (cleanup left invalid syntax — fix manually)", ""]

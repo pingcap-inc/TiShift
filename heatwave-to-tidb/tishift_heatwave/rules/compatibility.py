@@ -225,8 +225,11 @@ WARNING_RULES: list[CompatibilityRule] = [
         action=(
             "Starter: confirm your region supports FULLTEXT indexes "
             "(docs.pingcap.com/tidbcloud/vector-search-full-text-search-sql). "
-            "Essential/Dedicated/self-hosted: use Elasticsearch/Meilisearch, or TiDB's "
-            "native full-text/vector search as a replacement, not a drop-in index"
+            "Essential/Dedicated/self-hosted: add a TiFlash replica on the table — "
+            "columnar scans accelerate scan-based full-text filtering (LIKE/REGEXP) "
+            "in place of the index (convert emits this, rule HW-DDL-6); rewrite "
+            "MATCH ... AGAINST queries, or use Elasticsearch/Meilisearch for "
+            "relevance-ranked search"
         ),
         check=lambda ctx: (
             sum(1 for i in ctx.inventory.indexes if i.index_type.upper() == "FULLTEXT")
